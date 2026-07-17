@@ -1,27 +1,32 @@
-/* 페이지네이션 엔진.
+/* 읽기 화면.
  *
- * 계획서 6번의 "방법 B": CSS 다단에 맡긴다. 브라우저가 텍스트를 단에 흘려주고,
- * 우리는 단 하나를 한 페이지로 보고 좌우로 이동시킨다.
+ * 페이지네이션은 CSS 다단에 맡긴다 (계획서 6번의 "방법 B"). 브라우저가 텍스트를
+ * 단에 흘려주고, 우리는 단 하나를 한 페이지로 보고 좌우로 이동시킨다.
  *
  * 페이지 번호는 어디에도 저장하지 않는다. 글자 크기나 창 크기가 바뀌면 단이 다시
- * 흐르고 페이지 수가 달라지기 때문이다. 위치는 항상 블록 id 로 기억한다
- * (SCHEMA.md 1번).
+ * 흐르고 페이지 수가 달라진다 (실측: 15px→34쪽, 26px→60쪽). 위치는 항상 블록 id 로
+ * 기억한다 (SCHEMA.md 1번).
  */
 
 const App = {
+  slug: null,
   paper: null,
   page: 0,
   pageCount: 1,
-  stride: 0,     // 한 페이지 이동 거리 = 단 너비 + 단 간격
+  stride: 0,        // 한 페이지 이동 거리 = 단 너비 + 단 간격
+  lang: "original", // 'original' | 'translated'
+  refs: new Map(),  // ref id → 참고문헌
+  highlights: [],
+  bookmarks: new Set(),
 };
 
 const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => [...document.querySelectorAll(sel)];
 
 // ─── 인라인 태그 → HTML ──────────────────────────────────
 
 /** 중간 JSON 의 텍스트는 XML-safe 이고 <c>/<m> 태그가 박혀 있다 (SCHEMA.md 2번).
- *  이걸 화면용 HTML 로 바꾼다. 원문의 & < > 는 이스케이프된 채로 두면
- *  브라우저가 알아서 문자로 되돌려 그린다. */
+ *  이걸 화면용 HTML 로 바꾼다. 원문의 &amp; &lt; 는 그대로 두면 브라우저가 문자로 되돌린다. */
 function renderInline(text, inlineMath) {
   const mathById = new Map((inlineMath || []).map((m) => [m.id, m.latex]));
 
@@ -41,26 +46,43 @@ function escapeAttr(s) {
   return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
 
+function stripTags(text) {
+  return text.replace(/<[cm] id="[^"]+"\/>/g, "");
+}
+
+/** 이 블록에서 지금 보여줄 텍스트. 번역이 없으면 원문으로 되돌아간다.
+ *  스키마가 번역 필드를 nullable 로 둔 이유가 이것이다 — 일부만 번역된 논문도
+ *  정상적으로 읽혀야 한다. */
+function textOf(block, field) {
+  if (App.lang === "translated") {
+    const t = block[`${field}_translated`];
+    if (t) return t;
+  }
+  return block[`${field}_original`];
+}
+
 // ─── 블록 → DOM ─────────────────────────────────────────
 
-function renderBlock(block, slug) {
+function renderBlock(block) {
   const el = document.createElement(blockTag(block));
   el.id = block.id;
   el.dataset.block = block.id;
 
   switch (block.type) {
     case "heading":
-      el.textContent = stripTags(block.text_original);
+      el.textContent = stripTags(textOf(block, "text"));
       break;
 
     case "paragraph":
-      el.innerHTML = renderInline(block.text_original, block.inline_math);
+      el.innerHTML = renderInline(textOf(block, "text"), block.inline_math);
       break;
 
     case "list": {
       el.className = "list-block";
+      const items =
+        (App.lang === "translated" && block.items_translated) || block.items_original;
       const ul = document.createElement("ul");
-      for (const item of block.items_original) {
+      for (const item of items) {
         const li = document.createElement("li");
         li.innerHTML = renderInline(item, block.inline_math);
         ul.appendChild(li);
@@ -90,15 +112,16 @@ function renderBlock(block, slug) {
       box.className = "images";
       for (const path of block.image_paths) {
         const img = document.createElement("img");
-        img.src = `/papers/${slug}/${path}`;
+        img.src = `/papers/${App.slug}/${path}`;
         img.alt = block.caption_original || "";
         box.appendChild(img);
       }
       el.appendChild(box);
-      if (block.caption_original) {
-        const cap = document.createElement("figcaption");
-        cap.textContent = block.caption_original;
-        el.appendChild(cap);
+      const cap = textOf(block, "caption");
+      if (cap) {
+        const c = document.createElement("figcaption");
+        c.textContent = cap;
+        el.appendChild(c);
       }
       break;
     }
@@ -107,13 +130,14 @@ function renderBlock(block, slug) {
       el.className = "table-block";
       const scroll = document.createElement("div");
       scroll.className = "scroll";
-      scroll.innerHTML = block.table_html_original;
+      scroll.innerHTML = textOf(block, "table_html");
       el.appendChild(scroll);
-      if (block.caption_original) {
-        const cap = document.createElement("div");
-        cap.className = "table-caption";
-        cap.textContent = block.caption_original;
-        el.appendChild(cap);
+      const cap = textOf(block, "caption");
+      if (cap) {
+        const c = document.createElement("div");
+        c.className = "table-caption";
+        c.textContent = cap;
+        el.appendChild(c);
       }
       break;
     }
@@ -128,26 +152,86 @@ function blockTag(block) {
   return "div";
 }
 
-function stripTags(text) {
-  return text.replace(/<[cm] id="[^"]+"\/>/g, "");
-}
+// ─── 수식 ───────────────────────────────────────────────
 
-// ─── 수식 렌더링 ────────────────────────────────────────
-
-/** KaTeX 를 throwOnError:false 로 부른다.
- *
- *  실측에서 Docling 의 수식 모델이 \text{an} 을 \an 으로 잘못 뱉는 걸 봤다
- *  (5개 중 1개). \an 은 존재하지 않는 명령이라 KaTeX 가 예외를 던진다.
- *  그대로 두면 논문 하나 때문에 뷰어가 통째로 죽는다. 깨진 수식만 빨갛게
- *  보이고 나머지 페이지는 살아 있는 편이 낫다. */
+/** throwOnError:false 인 이유: Docling 의 수식 모델이 \text{an} 을 \an 으로 잘못 뱉는 걸
+ *  실측했다 (5개 중 1개). \an 은 없는 명령이라 KaTeX 가 예외를 던진다. 그대로 두면
+ *  논문 하나 때문에 뷰어가 통째로 죽는다. 깨진 수식만 빨갛게 보이는 편이 낫다. */
 function renderMath(root) {
   if (typeof katex === "undefined") return;
-
   for (const el of root.querySelectorAll(".katex-wrap")) {
     katex.render(el.dataset.latex, el, { displayMode: true, throwOnError: false });
   }
   for (const el of root.querySelectorAll(".inline-math")) {
     katex.render(el.dataset.latex, el, { displayMode: false, throwOnError: false });
+  }
+}
+
+// ─── 글자 오프셋 ────────────────────────────────────────
+
+/** 블록 안의 텍스트 노드들. KaTeX 가 만든 DOM 은 건너뛴다 — 화면에 안 보이는
+ *  MathML 까지 들어 있어서 오프셋이 뒤틀린다. */
+function textNodesIn(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (node.parentElement.closest(".katex")) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  const nodes = [];
+  let n;
+  while ((n = walker.nextNode())) nodes.push(n);
+  return nodes;
+}
+
+/** (노드, 노드 안 오프셋) → 블록 처음부터 센 글자 위치 */
+function globalOffset(root, node, offset) {
+  let total = 0;
+  for (const t of textNodesIn(root)) {
+    if (t === node) return total + offset;
+    total += t.data.length;
+  }
+  return -1;
+}
+
+/** 블록 안 [start, end) 구간을 <mark> 로 감싼다. 여러 텍스트 노드에 걸쳐도 된다. */
+function wrapRange(root, start, end, hid) {
+  let pos = 0;
+  for (const t of textNodesIn(root)) {
+    const len = t.data.length;
+    const from = Math.max(start - pos, 0);
+    const to = Math.min(end - pos, len);
+    if (from < to) {
+      const range = document.createRange();
+      range.setStart(t, from);
+      range.setEnd(t, to);
+      const mark = document.createElement("mark");
+      mark.className = "hl";
+      mark.dataset.hid = hid;
+      try {
+        range.surroundContents(mark);
+      } catch {
+        // 태그 경계를 가로지르면 surroundContents 가 거부한다. 그 조각은 건너뛴다.
+      }
+    }
+    pos += len;
+    if (pos >= end) break;
+  }
+}
+
+function applyHighlights() {
+  for (const m of $$("#book mark.hl")) {
+    m.replaceWith(...m.childNodes);   // 기존 표시를 걷어낸다
+  }
+  for (const h of App.highlights) {
+    if (h.lang !== App.lang) continue;   // 다른 언어에서 그은 것은 위치가 맞지 않는다
+    const el = document.getElementById(h.block_id);
+    if (el) wrapRange(el, h.start, h.end, h.id);
+  }
+  // note 가 달린 하이라이트는 표시가 다르다
+  for (const m of $$("#book mark.hl")) {
+    const h = App.highlights.find((x) => String(x.id) === m.dataset.hid);
+    if (h?.note) m.classList.add("has-note");
   }
 }
 
@@ -160,7 +244,7 @@ function measure() {
 
   // 단 하나가 화면을 정확히 채우게 만든다. 이 한 줄이 페이지네이션의 전부다:
   // 높이가 고정된 상태에서 내용이 넘치면 브라우저가 알아서 오른쪽에 단을 더 만들고,
-  // 그 단들이 곧 페이지가 된다. 글자 크기를 바꾸면 저절로 다시 흐른다.
+  // 그 단들이 곧 페이지가 된다.
   book.style.columnWidth = `${width}px`;
 
   App.stride = width + gap;
@@ -168,24 +252,25 @@ function measure() {
   App.pageCount = Math.max(1, Math.round((book.scrollWidth + gap) / App.stride));
 }
 
-function goto(page, { silent = false } = {}) {
+function goto(page) {
   App.page = Math.max(0, Math.min(page, App.pageCount - 1));
   $("#book").style.transform = `translateX(${-App.page * App.stride}px)`;
 
   $("#page-label").textContent = `${App.page + 1} / ${App.pageCount}`;
-  $("#progress-fill").style.width =
-    `${((App.page + 1) / App.pageCount) * 100}%`;
+  $("#progress-fill").style.width = `${((App.page + 1) / App.pageCount) * 100}%`;
   $("#prev").disabled = App.page === 0;
   $("#next").disabled = App.page >= App.pageCount - 1;
 
-  if (!silent) highlightToc();
+  highlightToc();
+  renderFootnotes();
+  updateBookmarkButton();
+  savePosition();
 }
 
 /** 어떤 요소가 몇 번째 페이지에 있는가.
- *  #book 이 transform 으로 밀려 있어도, 요소와 #book 의 상대 거리는 그대로다. */
+ *  #book 이 transform 으로 밀려 있어도 요소와 #book 의 상대 거리는 그대로다. */
 function pageOf(el) {
-  const bookLeft = $("#book").getBoundingClientRect().left;
-  const x = el.getBoundingClientRect().left - bookLeft;
+  const x = el.getBoundingClientRect().left - $("#book").getBoundingClientRect().left;
   return Math.floor(x / App.stride + 0.01);   // 경계 부동소수 오차 방어
 }
 
@@ -194,12 +279,64 @@ function gotoBlock(blockId) {
   if (el) goto(pageOf(el));
 }
 
+/** 지금 페이지에 보이는 첫 블록. 위치 저장과 리플로우 복원의 기준점. */
+function currentBlockId() {
+  for (const el of $("#book").querySelectorAll("[data-block]")) {
+    if (pageOf(el) >= App.page) return el.dataset.block;
+  }
+  return $("#book").querySelector("[data-block]")?.dataset.block ?? null;
+}
+
+// ─── 각주 ───────────────────────────────────────────────
+
+/** 지금 페이지에 있는 인용만 모아 페이지 하단에 각주로 그린다.
+ *
+ *  책처럼 "그 페이지의 각주는 그 페이지 아래에" 를 지키려면 페이지마다 각주 영역이
+ *  필요한데, CSS 다단에서는 단 안에 뭘 끼워 넣을 수가 없다. 그래서 화면에 보이는
+ *  페이지가 하나뿐이라는 점을 이용한다 — 각주 칸을 화면 하단에 고정해 두고,
+ *  현재 페이지의 각주만 갈아 끼운다.
+ *
+ *  각주 칸 높이는 고정이다. 페이지마다 높이를 바꾸면 본문이 다시 흐르고, 그러면
+ *  인용이 다른 페이지로 옮겨가고, 그럼 각주가 또 바뀌는 순환에 빠진다. */
+function renderFootnotes() {
+  const box = $("#footnotes");
+  box.innerHTML = "";
+
+  const seen = new Set();
+  for (const sup of $$("#book .cite")) {
+    if (pageOf(sup) !== App.page) continue;
+    const id = sup.dataset.ref;
+    if (seen.has(id)) continue;
+    seen.add(id);
+
+    const ref = App.refs.get(id);
+    if (!ref) continue;
+
+    const line = document.createElement("div");
+    line.className = "footnote";
+    line.innerHTML = `<span class="fn-marker">${ref.marker}</span> <span class="fn-text"></span>`;
+    line.querySelector(".fn-text").textContent = ref.text;
+    if (ref.doi) {
+      const a = document.createElement("a");
+      a.href = `https://doi.org/${ref.doi}`;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = "↗";
+      a.className = "fn-doi";
+      line.appendChild(a);
+    }
+    box.appendChild(line);
+  }
+  box.classList.toggle("empty", seen.size === 0);
+}
+
 // ─── 목차 ───────────────────────────────────────────────
 
-function buildToc(nodes, parent, slug) {
+function buildToc(nodes, parent) {
   for (const node of nodes) {
     const a = document.createElement("a");
-    a.textContent = node.title;
+    a.textContent =
+      (App.lang === "translated" && node.title_translated) || node.title;
     a.dataset.level = node.level;
     a.dataset.block = node.block_id;
     a.href = "#";
@@ -209,38 +346,178 @@ function buildToc(nodes, parent, slug) {
       if (window.innerWidth < 900) $("#toc").classList.remove("open");
     });
     parent.appendChild(a);
-    if (node.children?.length) buildToc(node.children, parent, slug);
+    if (node.children?.length) buildToc(node.children, parent);
   }
 }
 
 function highlightToc() {
   let current = null;
-  for (const a of document.querySelectorAll("#toc a")) {
+  for (const a of $$("#toc a")) {
     const el = document.getElementById(a.dataset.block);
     if (el && pageOf(el) <= App.page) current = a;
     a.classList.remove("current");
   }
-  if (current) current.classList.add("current");
+  current?.classList.add("current");
+}
+
+// ─── 서버와 상태 주고받기 ───────────────────────────────
+
+const api = (path, opts) =>
+  fetch(`/api/state/${App.slug}${path}`, {
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+  }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status))));
+
+let saveTimer;
+function savePosition() {
+  // 페이지를 넘길 때마다 서버를 때리면 낭비다. 잠깐 멈췄을 때만 보낸다.
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    const block = currentBlockId();
+    if (block) {
+      api("/position", { method: "PUT", body: JSON.stringify({ block_id: block }) })
+        .catch(() => {});   // 저장 실패로 읽기를 방해하지 않는다
+    }
+  }, 800);
+}
+
+function updateBookmarkButton() {
+  const block = currentBlockId();
+  $("#bookmark").classList.toggle("on", App.bookmarks.has(block));
+}
+
+async function toggleBookmark() {
+  const block = currentBlockId();
+  if (!block) return;
+  try {
+    const { bookmarked } = await api("/bookmark", {
+      method: "POST",
+      body: JSON.stringify({ block_id: block }),
+    });
+    bookmarked ? App.bookmarks.add(block) : App.bookmarks.delete(block);
+    updateBookmarkButton();
+  } catch {}
+}
+
+// ─── 하이라이트 만들기 ──────────────────────────────────
+
+function selectionInfo() {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+  const range = sel.getRangeAt(0);
+
+  const block = range.startContainer.parentElement?.closest("[data-block]");
+  if (!block || !block.contains(range.endContainer)) return null;
+  // 그림·표에는 긋지 않는다 (오프셋이 의미 없다)
+  if (block.classList.contains("figure") || block.classList.contains("table-block")) {
+    return null;
+  }
+
+  const start = globalOffset(block, range.startContainer, range.startOffset);
+  const end = globalOffset(block, range.endContainer, range.endOffset);
+  if (start < 0 || end < 0 || start >= end) return null;
+
+  return { blockId: block.dataset.block, start, end, text: sel.toString() };
+}
+
+async function createHighlight(note = null) {
+  const info = selectionInfo();
+  if (!info) return;
+  try {
+    const { id } = await api("/highlight", {
+      method: "POST",
+      body: JSON.stringify({
+        block_id: info.blockId,
+        lang: App.lang,
+        start: info.start,
+        end: info.end,
+        text: info.text,
+        note,
+      }),
+    });
+    App.highlights.push({ id, block_id: info.blockId, lang: App.lang, ...info, note });
+    window.getSelection().removeAllRanges();
+    applyHighlights();
+    hidePopup();
+  } catch {}
+}
+
+async function deleteHighlight(hid) {
+  try {
+    await api(`/highlight/${hid}`, { method: "DELETE" });
+    App.highlights = App.highlights.filter((h) => String(h.id) !== String(hid));
+    applyHighlights();
+    hidePopup();
+  } catch {}
+}
+
+async function editNote(hid) {
+  const h = App.highlights.find((x) => String(x.id) === String(hid));
+  const note = prompt("메모", h?.note || "");
+  if (note === null) return;
+  try {
+    await api(`/highlight/${hid}`, {
+      method: "PATCH",
+      body: JSON.stringify({ note: note || null }),
+    });
+    if (h) h.note = note || null;
+    applyHighlights();
+    hidePopup();
+  } catch {}
+}
+
+// ─── 떠 있는 작은 메뉴 ──────────────────────────────────
+
+function showPopup(x, y, buttons) {
+  const pop = $("#popup");
+  pop.innerHTML = "";
+  for (const [label, fn] of buttons) {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.addEventListener("mousedown", (e) => {
+      e.preventDefault();   // 선택이 풀리기 전에 처리한다
+      fn();
+    });
+    pop.appendChild(b);
+  }
+  pop.style.left = `${Math.max(8, x - 40)}px`;
+  pop.style.top = `${Math.max(8, y - 46)}px`;
+  pop.classList.add("open");
+}
+
+function hidePopup() {
+  $("#popup").classList.remove("open");
+}
+
+// ─── 번역 토글 ──────────────────────────────────────────
+
+function setLang(lang) {
+  App.lang = lang;
+  const anchor = currentBlockId();
+
+  const book = $("#book");
+  book.innerHTML = "";
+  for (const block of App.paper.blocks) book.appendChild(renderBlock(block));
+  renderMath(book);
+
+  $("#toc-list").innerHTML = "";
+  buildToc(App.paper.toc, $("#toc-list"));
+
+  applyHighlights();
+  measure();
+  if (anchor) gotoBlock(anchor);
+  else goto(0);
+
+  $("#lang").textContent = lang === "translated" ? "번역" : "원문";
+  $("#lang").classList.toggle("on", lang === "translated");
 }
 
 // ─── 시작 ───────────────────────────────────────────────
 
-async function main() {
-  const slug = document.body.dataset.slug;
-  const res = await fetch(`/api/paper/${slug}`);
-  App.paper = await res.json();
-
-  const book = $("#book");
-  for (const block of App.paper.blocks) {
-    book.appendChild(renderBlock(block, slug));
-  }
-
-  renderMath(book);
-
-  // 이미지가 다 로드돼야 높이가 확정되고, 그래야 단이 제대로 나뉜다.
-  // 이걸 안 기다리면 페이지 수가 틀리게 계산된다.
+async function waitForImages(root) {
+  // 이미지 높이가 확정돼야 단이 제대로 나뉜다. 안 기다리면 페이지 수가 틀린다.
   await Promise.all(
-    [...book.querySelectorAll("img")].map((img) =>
+    [...root.querySelectorAll("img")].map((img) =>
       img.complete
         ? Promise.resolve()
         : new Promise((r) => {
@@ -249,10 +526,38 @@ async function main() {
           })
     )
   );
+}
 
-  buildToc(App.paper.toc, $("#toc-list"), slug);
-  measure();
-  goto(0);
+async function main() {
+  App.slug = document.body.dataset.slug;
+  App.paper = await (await fetch(`/api/paper/${App.slug}`)).json();
+  for (const ref of App.paper.references) App.refs.set(ref.id, ref);
+
+  const hasTranslation = App.paper.blocks.some((b) => b.text_translated);
+  $("#lang").disabled = !hasTranslation;
+  $("#lang").title = hasTranslation ? "원문 ↔ 번역" : "이 논문은 번역되지 않았다";
+
+  const book = $("#book");
+  for (const block of App.paper.blocks) book.appendChild(renderBlock(block));
+  renderMath(book);
+  await waitForImages(book);
+
+  buildToc(App.paper.toc, $("#toc-list"));
+
+  // 저장된 상태를 불러온다
+  try {
+    const state = await api("");
+    App.highlights = state.highlights;
+    App.bookmarks = new Set(state.bookmarks.map((b) => b.block_id));
+    applyHighlights();
+    measure();
+    if (state.position) gotoBlock(state.position);
+    else goto(0);
+  } catch {
+    measure();
+    goto(0);
+  }
+
   $("#loading").classList.add("hidden");
 
   // ─── 조작 ───
@@ -261,8 +566,29 @@ async function main() {
   $(".tap.right").addEventListener("click", () => goto(App.page + 1));
   $(".tap.left").addEventListener("click", () => goto(App.page - 1));
   $("#toc-toggle").addEventListener("click", () => $("#toc").classList.toggle("open"));
+  $("#bookmark").addEventListener("click", toggleBookmark);
+  $("#lang").addEventListener("click", () =>
+    setLang(App.lang === "original" ? "translated" : "original")
+  );
+
+  // 글자 크기
+  for (const [id, delta] of [["font-minus", -1], ["font-plus", 1]]) {
+    $(`#${id}`).addEventListener("click", () => {
+      const now = parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--font-size")
+      );
+      const next = Math.min(30, Math.max(14, now + delta));
+      const anchor = currentBlockId();
+      document.documentElement.style.setProperty("--font-size", `${next}px`);
+      book.style.transition = "none";
+      measure();
+      if (anchor) gotoBlock(anchor);
+      requestAnimationFrame(() => (book.style.transition = ""));
+    });
+  }
 
   document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "INPUT") return;
     if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") {
       e.preventDefault();
       goto(App.page + 1);
@@ -271,30 +597,70 @@ async function main() {
       goto(App.page - 1);
     } else if (e.key === "Home") goto(0);
     else if (e.key === "End") goto(App.pageCount - 1);
+    else if (e.key === "t") setLang(App.lang === "original" ? "translated" : "original");
+    else if (e.key === "b") toggleBookmark();
   });
 
+  // 본문에서 글자를 끌면 하이라이트 메뉴가 뜬다
+  book.addEventListener("mouseup", (e) => {
+    const mark = e.target.closest("mark.hl");
+    if (mark) {
+      const hid = mark.dataset.hid;
+      const h = App.highlights.find((x) => String(x.id) === hid);
+      showPopup(e.clientX, e.clientY, [
+        [h?.note ? "메모 수정" : "메모", () => editNote(hid)],
+        ["지우기", () => deleteHighlight(hid)],
+      ]);
+      return;
+    }
+    setTimeout(() => {
+      if (selectionInfo()) {
+        showPopup(e.clientX, e.clientY, [
+          ["하이라이트", () => createHighlight()],
+          ["메모와 함께", () => {
+            const note = prompt("메모");
+            if (note !== null) createHighlight(note || null);
+          }],
+        ]);
+      } else hidePopup();
+    }, 0);
+  });
+
+  document.addEventListener("mousedown", (e) => {
+    if (!e.target.closest("#popup")) hidePopup();
+  });
+
+  // 인용을 누르면 그 참고문헌만 크게 보여준다
+  book.addEventListener("click", (e) => {
+    const cite = e.target.closest(".cite");
+    if (!cite) return;
+    const ref = App.refs.get(cite.dataset.ref);
+    if (!ref) return;
+    const box = $("#ref-popup");
+    box.querySelector(".rp-text").textContent = `${ref.marker} ${ref.text}`;
+    const link = box.querySelector(".rp-doi");
+    link.style.display = ref.doi ? "" : "none";
+    if (ref.doi) link.href = `https://doi.org/${ref.doi}`;
+    box.classList.add("open");
+  });
+  $("#ref-popup .rp-close").addEventListener("click", () =>
+    $("#ref-popup").classList.remove("open")
+  );
+
   // 창 크기가 바뀌면 단이 다시 흐른다. 페이지 번호는 의미를 잃으므로
-  // 보고 있던 블록을 기준으로 다시 찾아간다 — 위치는 블록 id 로 기억한다.
+  // 보고 있던 블록을 기준으로 되찾아간다.
   let resizeTimer;
   window.addEventListener("resize", () => {
     const anchor = currentBlockId();
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      $("#book").style.transition = "none";
+      book.style.transition = "none";
       measure();
       if (anchor) gotoBlock(anchor);
       else goto(App.page);
-      requestAnimationFrame(() => ($("#book").style.transition = ""));
+      requestAnimationFrame(() => (book.style.transition = ""));
     }, 120);
   });
-}
-
-/** 지금 페이지에 보이는 첫 블록의 id. 리플로우 후 되찾아갈 기준점. */
-function currentBlockId() {
-  for (const el of $("#book").querySelectorAll("[data-block]")) {
-    if (pageOf(el) >= App.page) return el.dataset.block;
-  }
-  return null;
 }
 
 main();

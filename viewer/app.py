@@ -12,8 +12,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from flask import Flask, abort, jsonify, render_template, send_from_directory
+from flask import Flask, abort, jsonify, render_template, request, send_from_directory
 
+from viewer.db import Store
 from viewer.library import scan
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -23,6 +24,7 @@ DATA_DIR = ROOT / "data"
 def create_app(data_dir: Path = DATA_DIR) -> Flask:
     app = Flask(__name__)
     app.config["DATA_DIR"] = data_dir
+    store = Store(data_dir / "reader.sqlite3")
 
     def papers():
         # 매 요청마다 훑는다. 논문 수가 수십 개 수준이라 충분히 빠르고,
@@ -55,5 +57,68 @@ def create_app(data_dir: Path = DATA_DIR) -> Flask:
             abort(404)
         # send_from_directory 가 경로 탈출(../)을 막아준다
         return send_from_directory(paper.dir / "figures", filename)
+
+    # ─── 읽기 상태 ──────────────────────────────────────
+    # 전부 블록 id 기준이다. 페이지 번호는 글자 크기가 바뀌면 의미를 잃는다.
+
+    def _require(slug: str):
+        if slug not in papers():
+            abort(404)
+
+    @app.route("/api/state/<slug>")
+    def get_state(slug: str):
+        _require(slug)
+        return jsonify({
+            "position": store.get_position(slug),
+            "bookmarks": store.list_bookmarks(slug),
+            "highlights": store.list_highlights(slug),
+        })
+
+    @app.route("/api/state/<slug>/position", methods=["PUT"])
+    def put_position(slug: str):
+        _require(slug)
+        block_id = (request.json or {}).get("block_id")
+        if not block_id:
+            abort(400, "block_id 가 필요하다")
+        store.set_position(slug, block_id)
+        return jsonify({"ok": True})
+
+    @app.route("/api/state/<slug>/bookmark", methods=["POST"])
+    def post_bookmark(slug: str):
+        _require(slug)
+        block_id = (request.json or {}).get("block_id")
+        if not block_id:
+            abort(400, "block_id 가 필요하다")
+        return jsonify({"bookmarked": store.toggle_bookmark(slug, block_id)})
+
+    @app.route("/api/state/<slug>/highlight", methods=["POST"])
+    def post_highlight(slug: str):
+        _require(slug)
+        data = request.json or {}
+        try:
+            hid = store.add_highlight(
+                slug,
+                data["block_id"],
+                data.get("lang", "original"),
+                int(data["start"]),
+                int(data["end"]),
+                data.get("text", ""),
+                data.get("note"),
+            )
+        except (KeyError, ValueError, TypeError):
+            abort(400, "block_id, start, end 가 필요하다")
+        return jsonify({"id": hid})
+
+    @app.route("/api/state/<slug>/highlight/<int:hid>", methods=["PATCH", "DELETE"])
+    def edit_highlight(slug: str, hid: int):
+        _require(slug)
+        if request.method == "DELETE":
+            if not store.delete_highlight(slug, hid):
+                abort(404)
+            return jsonify({"ok": True})
+        note = (request.json or {}).get("note")
+        if not store.update_note(slug, hid, note):
+            abort(404)
+        return jsonify({"ok": True})
 
     return app

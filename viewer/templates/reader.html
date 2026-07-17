@@ -22,10 +22,23 @@
 
   <main id="viewport">
     <div id="book"></div>
+    <div id="footnotes" class="empty"></div>
   </main>
+
+  <div id="popup"></div>
+
+  <div id="ref-popup">
+    <button class="rp-close">✕</button>
+    <p class="rp-text"></p>
+    <a class="rp-doi" target="_blank" rel="noopener">DOI 열기 ↗</a>
+  </div>
 
   <div id="bar">
     <button id="toc-toggle">목차</button>
+    <button id="lang" title="원문 ↔ 번역">원문</button>
+    <button id="bookmark" title="북마크 (b)">🔖</button>
+    <button id="font-minus" title="글자 작게">A−</button>
+    <button id="font-plus" title="글자 크게">A+</button>
     <span id="title-label">{{ paper.title }}</span>
     <button id="prev">◀</button>
     <div id="progress"><div id="progress-fill"></div></div>

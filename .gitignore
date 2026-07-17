@@ -26,3 +26,6 @@ venv/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# 읽기 상태 DB (개인 기록)
+*.sqlite3

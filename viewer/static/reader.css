@@ -16,6 +16,8 @@
   --font-size: 19px;
   --line-height: 1.85;
   --font-body: "Noto Serif KR", "Nanum Myeongjo", Georgia, serif;
+  --footnote-height: 92px;
+  --hl: rgba(230, 195, 60, .38);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -89,7 +91,10 @@ body {
 }
 
 #book {
-  height: 100%;
+  /* 각주 칸만큼 비워 둔다. 이 높이는 고정이어야 한다 — 페이지마다 각주 높이가
+   * 달라지면 본문이 다시 흐르고, 그러면 인용이 다른 페이지로 옮겨가고, 그럼 각주가
+   * 또 바뀌는 순환에 빠진다. 각주가 없는 페이지는 그냥 아래 여백이 넉넉해 보인다. */
+  height: calc(100% - var(--footnote-height));
   /* column-width 는 JS 가 화면 너비와 똑같이 맞춘다 (reader.js measure()).
    * 그래야 한 화면에 단이 정확히 하나만 들어가고, 넘치는 내용이 오른쪽 단으로
    * 흘러 나간다. 그 넘친 단들이 곧 다음 페이지다. CSS 에 고정값으로 박을 수 없다 —
@@ -121,7 +126,7 @@ body {
 #book ul { margin: 0 0 .85em; padding-left: 1.3em; }
 #book li { margin-bottom: .3em; }
 
-/* 인용 [12] — Phase 3에서 페이지 하단 각주로 연결한다 */
+/* 인용 [12] — 누르면 참고문헌 전문이 뜨고, 같은 페이지 하단 각주에도 실린다 */
 .cite {
   color: var(--accent);
   font-size: .78em;
@@ -129,6 +134,112 @@ body {
   line-height: 0;
   cursor: pointer;
   padding: 0 1px;
+}
+.cite:hover { text-decoration: underline; }
+
+/* ─── 각주 ──────────────────────────────────────────────
+ * 책처럼 "그 페이지의 각주는 그 페이지 아래에". CSS 다단에서는 단 안에 뭘 끼워
+ * 넣을 수 없으므로, 화면에 보이는 페이지가 하나뿐이라는 점을 이용해 하단에 고정해
+ * 두고 현재 페이지의 각주만 갈아 끼운다. (reader.js renderFootnotes)
+ */
+
+#footnotes {
+  position: absolute;
+  left: var(--page-margin);
+  right: var(--page-margin);
+  bottom: calc(var(--page-margin) / 2);
+  height: var(--footnote-height);
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  overflow: hidden;
+  font-family: system-ui, sans-serif;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+#footnotes.empty { border-top-color: transparent; }
+
+.footnote {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 3px;
+  white-space: nowrap;
+}
+.fn-marker { color: var(--accent); flex: none; }
+.fn-text {
+  overflow: hidden;
+  text-overflow: ellipsis;   /* 참고문헌은 길다. 전문은 인용을 눌러서 본다 */
+}
+.fn-doi { color: var(--accent); text-decoration: none; flex: none; }
+
+/* ─── 하이라이트 ────────────────────────────────────────── */
+
+mark.hl {
+  background: var(--hl);
+  color: inherit;
+  border-radius: 2px;
+  cursor: pointer;
+}
+mark.hl.has-note {
+  border-bottom: 2px solid var(--accent);
+}
+
+/* 글자를 끌면 뜨는 작은 메뉴 */
+#popup {
+  position: fixed;
+  display: none;
+  gap: 2px;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .16);
+  z-index: 40;
+}
+#popup.open { display: flex; }
+#popup button {
+  background: none;
+  border: none;
+  color: var(--fg);
+  padding: 5px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: system-ui, sans-serif;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+#popup button:hover { background: rgba(139, 111, 71, .14); }
+
+/* 인용을 누르면 뜨는 참고문헌 전문 */
+#ref-popup {
+  position: fixed;
+  display: none;
+  left: 50%;
+  bottom: 70px;
+  transform: translateX(-50%);
+  max-width: 620px;
+  width: calc(100% - 80px);
+  padding: 16px 40px 14px 18px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .18);
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  z-index: 40;
+}
+#ref-popup.open { display: block; }
+#ref-popup .rp-text { margin: 0 0 8px; }
+#ref-popup .rp-doi { color: var(--accent); text-decoration: none; font-size: 12px; }
+#ref-popup .rp-close {
+  position: absolute;
+  top: 8px; right: 8px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
 }
 
 /* ─── 그림·표: 한 쪽 통째로 ─────────────────────────────── */
@@ -234,6 +345,10 @@ figcaption, .table-caption {
 #bar button:hover { border-color: var(--accent); color: var(--accent); }
 #bar button:disabled { opacity: .35; cursor: default; }
 #bar button:disabled:hover { border-color: var(--line); color: var(--fg); }
+#bar button.on { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+#bar button.on:hover { color: var(--bg); }
+#bookmark { filter: grayscale(1); opacity: .55; }
+#bookmark.on { filter: none; opacity: 1; background: none; border-color: var(--accent); }
 
 #progress {
   flex: 1;
