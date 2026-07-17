@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>논문 리더</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='reader.css') }}">
+  <style>
+    body { overflow: auto; }
+    .shelf { max-width: 760px; margin: 60px auto; padding: 0 24px; }
+    .shelf h1 { font-size: 24px; margin: 0 0 6px; }
+    .shelf .sub { color: var(--muted); font-size: 14px; font-family: system-ui, sans-serif;
+                  margin-bottom: 32px; }
+    .book-card {
+      display: block; padding: 18px 20px; margin-bottom: 12px;
+      border: 1px solid var(--line); border-radius: 8px;
+      text-decoration: none; color: var(--fg);
+    }
+    .book-card:hover { border-color: var(--accent); }
+    .book-card .t { font-size: 16px; line-height: 1.45; margin-bottom: 6px; }
+    .book-card .m { font-size: 12.5px; color: var(--muted); font-family: system-ui, sans-serif; }
+    .tag { display: inline-block; padding: 1px 7px; border-radius: 3px; font-size: 11px;
+           border: 1px solid var(--line); margin-left: 6px; }
+    .empty { color: var(--muted); font-family: system-ui, sans-serif; font-size: 14px;
+             line-height: 1.7; }
+    code { background: rgba(139,111,71,.12); padding: 2px 6px; border-radius: 3px;
+           font-size: 12.5px; }
+  </style>
+</head>
+<body>
+  <div class="shelf">
+    <h1>논문 리더</h1>
+    <div class="sub">읽을 논문 {{ papers|length }}편</div>
+
+    {% for p in papers %}
+      <a class="book-card" href="{{ url_for('read', slug=p.slug) }}">
+        <div class="t">{{ p.title }}</div>
+        <div class="m">
+          {% if p.authors %}{{ p.authors[:3]|join(', ') }}{% if p.authors|length > 3 %} 외{% endif %}{% endif %}
+          {% if p.year %} · {{ p.year }}{% endif %}
+          · {{ p.block_count }}블록
+          {% if p.translated %}<span class="tag">번역됨</span>{% else %}<span class="tag">원문</span>{% endif %}
+        </div>
+      </a>
+    {% else %}
+      <p class="empty">
+        아직 읽을 논문이 없다.<br>
+        <code>python -m pipeline data/input/논문.pdf</code> 로 논문을 먼저 넣어야 한다.
+      </p>
+    {% endfor %}
+  </div>
+</body>
+</html>

@@ -1,0 +1,287 @@
+/* Kindle 스타일 읽기 화면.
+ *
+ * 페이지네이션은 CSS 다단(column)에 맡긴다 (계획서 6번의 "방법 B").
+ * 브라우저가 텍스트를 단에 알아서 흘려주므로, 한 단 = 한 페이지가 된다.
+ * 글자 크기를 바꾸면 단이 다시 흐르고 페이지 수도 저절로 달라진다.
+ */
+
+:root {
+  --bg: #faf8f3;          /* 종이색. 순백은 눈이 아프다 */
+  --fg: #2b2b2b;
+  --muted: #7a7568;
+  --line: #e3ded2;
+  --accent: #8b6f47;
+
+  --page-margin: 56px;
+  --font-size: 19px;
+  --line-height: 1.85;
+  --font-body: "Noto Serif KR", "Nanum Myeongjo", Georgia, serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a1a;
+    --fg: #d8d4cc;
+    --muted: #8a857c;
+    --line: #333;
+    --accent: #c9a227;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  overflow: hidden;   /* 페이지 넘김이므로 세로 스크롤은 없다 */
+}
+
+/* ─── 목차 사이드바 ─────────────────────────────────────── */
+
+#toc {
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  width: 300px;
+  padding: 24px 0;
+  background: var(--bg);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  transform: translateX(-100%);
+  transition: transform .22s ease;
+  z-index: 20;
+}
+#toc.open { transform: translateX(0); }
+
+#toc h2 {
+  margin: 0 24px 14px;
+  font-size: 13px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+#toc a {
+  display: block;
+  padding: 7px 24px;
+  color: var(--fg);
+  text-decoration: none;
+  font-size: 14px;
+  line-height: 1.45;
+  border-left: 2px solid transparent;
+}
+#toc a:hover { background: rgba(139, 111, 71, .09); }
+#toc a.current { border-left-color: var(--accent); color: var(--accent); }
+
+/* 목차 깊이별 들여쓰기 — "세분화 목차"가 눈에 보이게 */
+#toc a[data-level="2"] { padding-left: 42px; font-size: 13px; }
+#toc a[data-level="3"] { padding-left: 60px; font-size: 12.5px; color: var(--muted); }
+#toc a[data-level="4"] { padding-left: 78px; font-size: 12px; color: var(--muted); }
+
+/* ─── 페이지 영역 ───────────────────────────────────────── */
+
+#viewport {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 46px;
+  overflow: hidden;      /* 넘치는 단을 숨긴다. 보이는 단이 곧 현재 페이지 */
+  padding: var(--page-margin);
+}
+
+#book {
+  height: 100%;
+  /* column-width 는 JS 가 화면 너비와 똑같이 맞춘다 (reader.js measure()).
+   * 그래야 한 화면에 단이 정확히 하나만 들어가고, 넘치는 내용이 오른쪽 단으로
+   * 흘러 나간다. 그 넘친 단들이 곧 다음 페이지다. CSS 에 고정값으로 박을 수 없다 —
+   * 창 크기에 따라 달라져야 하기 때문이다. */
+  column-gap: calc(var(--page-margin) * 2);
+  column-fill: auto;     /* 단을 균등 분배하지 말고 위에서부터 꽉 채운다 */
+  transition: transform .18s ease;
+  font-size: var(--font-size);
+  line-height: var(--line-height);
+  text-align: justify;
+  hyphens: auto;
+}
+
+#book p {
+  margin: 0 0 .85em;
+  orphans: 2;   /* 페이지 끝에 한 줄만 남기지 않는다 */
+  widows: 2;    /* 페이지 첫머리에 한 줄만 오지 않는다 */
+}
+
+#book h2, #book h3, #book h4 {
+  margin: 1.4em 0 .5em;
+  line-height: 1.35;
+  break-after: avoid;   /* 제목만 페이지 끝에 남고 본문이 넘어가면 안 된다 */
+}
+#book h2 { font-size: 1.28em; }
+#book h3 { font-size: 1.12em; }
+#book h4 { font-size: 1em; color: var(--muted); }
+
+#book ul { margin: 0 0 .85em; padding-left: 1.3em; }
+#book li { margin-bottom: .3em; }
+
+/* 인용 [12] — Phase 3에서 페이지 하단 각주로 연결한다 */
+.cite {
+  color: var(--accent);
+  font-size: .78em;
+  vertical-align: super;
+  line-height: 0;
+  cursor: pointer;
+  padding: 0 1px;
+}
+
+/* ─── 그림·표: 한 쪽 통째로 ─────────────────────────────── */
+
+.figure, .table-block {
+  break-before: column;   /* 새 페이지에서 시작 */
+  break-after: column;    /* 뒷 내용은 다음 페이지로 */
+  break-inside: avoid;    /* 그림이 두 페이지에 걸치지 않는다 */
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  margin: 0;
+}
+
+.figure img {
+  max-width: 100%;
+  max-height: 78%;
+  object-fit: contain;
+}
+
+/* (a)(b) 로 나뉜 복합 그림 — 원래 논문에서도 나란히 있던 것들 */
+.figure .images {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: center;
+  max-height: 78%;
+}
+.figure .images img { max-height: 100%; }
+
+figcaption, .table-caption {
+  font-size: .82em;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.5;
+  max-width: 90%;
+}
+
+.table-block .scroll {
+  max-width: 100%;
+  max-height: 82%;
+  overflow: auto;
+}
+.table-block table {
+  border-collapse: collapse;
+  font-size: .74em;
+  font-family: system-ui, sans-serif;
+}
+.table-block th, .table-block td {
+  border: 1px solid var(--line);
+  padding: 5px 9px;
+  text-align: left;
+}
+.table-block th { background: rgba(139, 111, 71, .1); font-weight: 600; }
+.table-block caption { display: none; }  /* 캡션은 우리가 따로 그린다 */
+
+/* ─── 수식 ──────────────────────────────────────────────── */
+
+.equation {
+  break-inside: avoid;   /* 수식이 페이지 경계에 잘리면 못 읽는다 */
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 1.1em 0;
+}
+.equation .katex-wrap { flex: 1; overflow-x: auto; text-align: center; }
+.equation .eq-number { color: var(--muted); font-size: .85em; flex: none; }
+
+/* 깨진 LaTeX 는 빨갛게 보이되 페이지는 살아 있어야 한다 (throwOnError: false) */
+.katex-error { color: #c0392b; }
+
+/* ─── 하단 바 ───────────────────────────────────────────── */
+
+#bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 18px;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+  font-family: system-ui, sans-serif;
+  font-size: 12.5px;
+  color: var(--muted);
+  z-index: 10;
+}
+
+#bar button {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--fg);
+  padding: 5px 11px;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-family: inherit;
+}
+#bar button:hover { border-color: var(--accent); color: var(--accent); }
+#bar button:disabled { opacity: .35; cursor: default; }
+#bar button:disabled:hover { border-color: var(--line); color: var(--fg); }
+
+#progress {
+  flex: 1;
+  height: 3px;
+  background: var(--line);
+  border-radius: 2px;
+  overflow: hidden;
+}
+#progress-fill {
+  height: 100%;
+  background: var(--accent);
+  width: 0;
+  transition: width .18s ease;
+}
+
+#page-label { flex: none; font-variant-numeric: tabular-nums; }
+
+#title-label {
+  flex: none;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+}
+
+/* 페이지 넘김용 좌우 클릭 영역 */
+.tap {
+  position: absolute;
+  top: 0; bottom: 46px;
+  width: 12%;
+  cursor: pointer;
+  z-index: 5;
+}
+.tap.left { left: 0; }
+.tap.right { right: 0; }
+.tap:hover { background: rgba(139, 111, 71, .05); }
+
+#loading {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  background: var(--bg);
+  z-index: 30;
+}
+#loading.hidden { display: none; }

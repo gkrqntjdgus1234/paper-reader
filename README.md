@@ -100,7 +100,7 @@ python -m viewer                 # http://localhost:5000  (Phase 2에서 구현)
 
 - [x] **Phase 0** — 프로젝트 뼈대, JSON 스키마 확정
 - [x] **Phase 1** — 전처리 파이프라인 (Docling · 번역 · 참고문헌 · 메타데이터)
-- [ ] **Phase 2** — 뷰어 골격 (목차 · KaTeX · 페이지네이션 엔진)
+- [x] **Phase 2** — 뷰어 골격 (목차 · KaTeX · 페이지네이션 엔진)
 - [ ] **Phase 3** — Kindle 읽기 경험 (페이지 넘김 · 번역 토글 · 각주 · 하이라이트)
 - [ ] **Phase 4** — 라이브러리 · 검색 · 데모
 

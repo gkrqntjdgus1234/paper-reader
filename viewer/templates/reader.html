@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ paper.title }}</title>
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='reader.css') }}">
+</head>
+<body data-slug="{{ paper.slug }}">
+
+  <nav id="toc">
+    <h2>목차</h2>
+    <div id="toc-list"></div>
+  </nav>
+
+  <div class="tap left"></div>
+  <div class="tap right"></div>
+
+  <main id="viewport">
+    <div id="book"></div>
+  </main>
+
+  <div id="bar">
+    <button id="toc-toggle">목차</button>
+    <span id="title-label">{{ paper.title }}</span>
+    <button id="prev">◀</button>
+    <div id="progress"><div id="progress-fill"></div></div>
+    <button id="next">▶</button>
+    <span id="page-label">— / —</span>
+  </div>
+
+  <div id="loading">논문을 펼치는 중…</div>
+
+  <script defer src="{{ url_for('static', filename='reader.js') }}"></script>
+</body>
+</html>
