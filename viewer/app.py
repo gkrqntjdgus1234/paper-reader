@@ -15,7 +15,8 @@ from pathlib import Path
 from flask import Flask, abort, jsonify, render_template, request, send_from_directory
 
 from viewer.db import Store
-from viewer.library import scan
+from viewer.library import reading_progress, scan
+from viewer.search import search_all
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
@@ -33,8 +34,35 @@ def create_app(data_dir: Path = DATA_DIR) -> Flask:
 
     @app.route("/")
     def index():
-        items = sorted(papers().values(), key=lambda p: p.title.lower())
-        return render_template("library.html", papers=items)
+        found = papers()
+        items = sorted(found.values(), key=lambda p: p.title.lower())
+        # 어디까지 읽었는지 — 페이지 번호가 아니라 블록 순서로 잰다
+        progress = {
+            p.slug: reading_progress(p, store.get_position(p.slug)) for p in items
+        }
+        counts = {
+            p.slug: (len(store.list_bookmarks(p.slug)), len(store.list_highlights(p.slug)))
+            for p in items
+        }
+        return render_template(
+            "library.html", papers=items, progress=progress, counts=counts
+        )
+
+    @app.route("/api/search")
+    def api_search():
+        query = request.args.get("q", "")
+        hits = search_all(papers(), query)
+        return jsonify([
+            {
+                "slug": h.slug,
+                "paper_title": h.paper_title,
+                "block_id": h.block_id,
+                "lang": h.lang,
+                "snippet": h.snippet,
+                "section": h.section,
+            }
+            for h in hits
+        ])
 
     @app.route("/read/<slug>")
     def read(slug: str):

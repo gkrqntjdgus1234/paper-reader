@@ -7,20 +7,45 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='reader.css') }}">
   <style>
     body { overflow: auto; }
-    .shelf { max-width: 760px; margin: 60px auto; padding: 0 24px; }
+    .shelf { max-width: 780px; margin: 56px auto; padding: 0 24px; }
     .shelf h1 { font-size: 24px; margin: 0 0 6px; }
     .shelf .sub { color: var(--muted); font-size: 14px; font-family: system-ui, sans-serif;
-                  margin-bottom: 32px; }
+                  margin-bottom: 26px; }
+
+    #q {
+      width: 100%; padding: 11px 14px; margin-bottom: 26px;
+      background: transparent; color: var(--fg);
+      border: 1px solid var(--line); border-radius: 8px;
+      font-family: system-ui, sans-serif; font-size: 14px;
+    }
+    #q:focus { outline: none; border-color: var(--accent); }
+
     .book-card {
-      display: block; padding: 18px 20px; margin-bottom: 12px;
+      display: block; padding: 17px 20px; margin-bottom: 12px;
       border: 1px solid var(--line); border-radius: 8px;
       text-decoration: none; color: var(--fg);
     }
     .book-card:hover { border-color: var(--accent); }
-    .book-card .t { font-size: 16px; line-height: 1.45; margin-bottom: 6px; }
+    .book-card .t { font-size: 16px; line-height: 1.45; margin-bottom: 7px; }
     .book-card .m { font-size: 12.5px; color: var(--muted); font-family: system-ui, sans-serif; }
     .tag { display: inline-block; padding: 1px 7px; border-radius: 3px; font-size: 11px;
            border: 1px solid var(--line); margin-left: 6px; }
+
+    .bar { height: 3px; background: var(--line); border-radius: 2px; margin-top: 10px; }
+    .bar > div { height: 100%; background: var(--accent); border-radius: 2px; }
+
+    #results { margin-top: 4px; }
+    #results .hit {
+      display: block; padding: 12px 16px; margin-bottom: 8px;
+      border-left: 2px solid var(--line); text-decoration: none; color: var(--fg);
+      font-family: system-ui, sans-serif;
+    }
+    #results .hit:hover { border-left-color: var(--accent); background: rgba(139,111,71,.06); }
+    #results .hit .where { font-size: 11.5px; color: var(--muted); margin-bottom: 4px; }
+    #results .hit .snip { font-size: 13px; line-height: 1.6; }
+    #results .hit mark { background: var(--hl); color: inherit; }
+    #results .none { color: var(--muted); font-size: 13.5px; font-family: system-ui, sans-serif; }
+
     .empty { color: var(--muted); font-family: system-ui, sans-serif; font-size: 14px;
              line-height: 1.7; }
     code { background: rgba(139,111,71,.12); padding: 2px 6px; border-radius: 3px;
@@ -32,22 +57,79 @@
     <h1>논문 리더</h1>
     <div class="sub">읽을 논문 {{ papers|length }}편</div>
 
-    {% for p in papers %}
-      <a class="book-card" href="{{ url_for('read', slug=p.slug) }}">
-        <div class="t">{{ p.title }}</div>
-        <div class="m">
-          {% if p.authors %}{{ p.authors[:3]|join(', ') }}{% if p.authors|length > 3 %} 외{% endif %}{% endif %}
-          {% if p.year %} · {{ p.year }}{% endif %}
-          · {{ p.block_count }}블록
-          {% if p.translated %}<span class="tag">번역됨</span>{% else %}<span class="tag">원문</span>{% endif %}
-        </div>
-      </a>
-    {% else %}
-      <p class="empty">
-        아직 읽을 논문이 없다.<br>
-        <code>python -m pipeline data/input/논문.pdf</code> 로 논문을 먼저 넣어야 한다.
-      </p>
-    {% endfor %}
+    <input id="q" type="search" placeholder="논문 전체에서 찾기 (원문·번역 모두)" autocomplete="off">
+
+    <div id="results"></div>
+
+    <div id="shelf-list">
+      {% for p in papers %}
+        <a class="book-card" href="{{ url_for('read', slug=p.slug) }}">
+          <div class="t">{{ p.title }}</div>
+          <div class="m">
+            {% if p.authors %}{{ p.authors[:3]|join(', ') }}{% if p.authors|length > 3 %} 외{% endif %}{% endif %}
+            {% if p.year %} · {{ p.year }}{% endif %}
+            {% if progress[p.slug] %} · {{ progress[p.slug] }}% 읽음{% endif %}
+            {% if counts[p.slug][0] %} · 북마크 {{ counts[p.slug][0] }}{% endif %}
+            {% if counts[p.slug][1] %} · 하이라이트 {{ counts[p.slug][1] }}{% endif %}
+            {% if p.translated %}<span class="tag">번역됨</span>{% else %}<span class="tag">원문</span>{% endif %}
+          </div>
+          {% if progress[p.slug] %}
+            <div class="bar"><div style="width: {{ progress[p.slug] }}%"></div></div>
+          {% endif %}
+        </a>
+      {% else %}
+        <p class="empty">
+          아직 읽을 논문이 없다.<br>
+          <code>python -m pipeline data/input/논문.pdf</code> 로 논문을 먼저 넣어야 한다.
+        </p>
+      {% endfor %}
+    </div>
   </div>
+
+  <script>
+    const q = document.querySelector('#q');
+    const results = document.querySelector('#results');
+    const shelf = document.querySelector('#shelf-list');
+    let timer;
+
+    const escapeHtml = (s) =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    q.addEventListener('input', () => {
+      clearTimeout(timer);
+      const query = q.value.trim();
+      if (query.length < 2) {
+        results.innerHTML = '';
+        shelf.style.display = '';
+        return;
+      }
+      // 글자마다 서버를 때리지 않는다. 손을 멈추면 보낸다.
+      timer = setTimeout(async () => {
+        const hits = await (await fetch(`/api/search?q=${encodeURIComponent(query)}`)).json();
+        shelf.style.display = 'none';
+        if (!hits.length) {
+          results.innerHTML = `<p class="none">"${escapeHtml(query)}" — 찾은 것이 없다.</p>`;
+          return;
+        }
+        results.innerHTML = '';
+        for (const h of hits) {
+          const a = document.createElement('a');
+          a.className = 'hit';
+          // 검색 결과는 블록 id 로 간다. 페이지 번호는 화면마다 다르다.
+          a.href = `/read/${h.slug}?goto=${h.block_id}&lang=${h.lang}`;
+          const marked = escapeHtml(h.snippet).replace(
+            new RegExp(escapeHtml(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig'),
+            (m) => `<mark>${m}</mark>`
+          );
+          a.innerHTML =
+            `<div class="where">${escapeHtml(h.paper_title.slice(0, 52))}` +
+            `${h.section ? ' · ' + escapeHtml(h.section) : ''}` +
+            ` · ${h.lang === 'translated' ? '번역' : '원문'}</div>` +
+            `<div class="snip">${marked}</div>`;
+          results.appendChild(a);
+        }
+      }, 200);
+    });
+  </script>
 </body>
 </html>

@@ -17,6 +17,14 @@
     <div id="toc-list"></div>
   </nav>
 
+  <aside id="find">
+    <div class="find-head">
+      <input id="find-input" type="search" placeholder="이 논문에서 찾기" autocomplete="off">
+      <button id="find-close" title="닫기 (Esc)">✕</button>
+    </div>
+    <div id="find-results"></div>
+  </aside>
+
   <div class="tap left"></div>
   <div class="tap right"></div>
 
@@ -35,6 +43,7 @@
 
   <div id="bar">
     <button id="toc-toggle">목차</button>
+    <button id="find-toggle" title="이 논문에서 찾기 (Ctrl+F)">찾기</button>
     <button id="lang" title="원문 ↔ 번역">원문</button>
     <button id="bookmark" title="북마크 (b)">🔖</button>
     <button id="font-minus" title="글자 작게">A−</button>

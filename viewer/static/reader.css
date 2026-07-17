@@ -314,6 +314,59 @@ figcaption, .table-caption {
 /* 깨진 LaTeX 는 빨갛게 보이되 페이지는 살아 있어야 한다 (throwOnError: false) */
 .katex-error { color: #c0392b; }
 
+/* ─── 논문 안에서 찾기 ──────────────────────────────────── */
+
+#find {
+  position: fixed;
+  top: 0; right: 0; bottom: 46px;
+  width: 340px;
+  background: var(--bg);
+  border-left: 1px solid var(--line);
+  transform: translateX(100%);
+  transition: transform .22s ease;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  font-family: system-ui, sans-serif;
+}
+#find.open { transform: translateX(0); }
+
+.find-head { display: flex; gap: 6px; padding: 16px; border-bottom: 1px solid var(--line); }
+#find-input {
+  flex: 1;
+  padding: 8px 10px;
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+}
+#find-input:focus { outline: none; border-color: var(--accent); }
+#find-close {
+  background: none; border: none; color: var(--muted);
+  cursor: pointer; font-size: 14px; padding: 0 4px;
+}
+
+#find-results { overflow-y: auto; padding: 8px 0; }
+.find-hit {
+  display: block; padding: 9px 16px;
+  text-decoration: none; color: var(--fg);
+  border-left: 2px solid transparent;
+}
+.find-hit:hover { background: rgba(139, 111, 71, .08); border-left-color: var(--accent); }
+.fh-page { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+.fh-text { font-size: 12.5px; line-height: 1.55; }
+.find-hit mark { background: var(--hl); color: inherit; }
+.find-none { color: var(--muted); font-size: 13px; padding: 10px 16px; }
+
+/* 검색 결과로 뛰어왔을 때 어디가 걸린 건지 눈에 띄게 */
+@keyframes flash {
+  0%, 100% { background: transparent; }
+  25%      { background: var(--hl); }
+}
+.flash { animation: flash 1.4s ease; border-radius: 3px; }
+
 /* ─── 하단 바 ───────────────────────────────────────────── */
 
 #bar {

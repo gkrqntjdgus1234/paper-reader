@@ -21,10 +21,27 @@ class Paper:
     year: int | None
     translated: bool
     block_count: int
+    block_ids: list[str]
 
     @property
     def json_path(self) -> Path:
         return self.dir / "paper.json"
+
+
+def reading_progress(paper: Paper, position: str | None) -> int:
+    """어디까지 읽었나, 0~100.
+
+    페이지 번호로 재지 않는다. 페이지는 글자 크기와 창 크기에 따라 매번 달라진다
+    (실측: 같은 논문이 15px 에서 35쪽, 26px 에서 68쪽). 대신 저장된 블록이 전체
+    블록 중 몇 번째인지로 잰다 — 이건 화면과 무관하다.
+    """
+    if not position or not paper.block_ids:
+        return 0
+    try:
+        idx = paper.block_ids.index(position)
+    except ValueError:
+        return 0
+    return round((idx + 1) / len(paper.block_ids) * 100)
 
 
 def _slugify(name: str) -> str:
@@ -55,6 +72,7 @@ def scan(data_dir: Path) -> dict[str, Paper]:
         meta = doc.get("meta", {})
         folder = json_file.parent
         slug = _slugify(folder.name)
+        blocks = doc.get("blocks") or []
         papers[slug] = Paper(
             slug=slug,
             dir=folder,
@@ -62,7 +80,8 @@ def scan(data_dir: Path) -> dict[str, Paper]:
             authors=meta.get("authors") or [],
             year=meta.get("year"),
             translated=bool(meta.get("translated_lang")),
-            block_count=len(doc.get("blocks") or []),
+            block_count=len(blocks),
+            block_ids=[b["id"] for b in blocks],
         )
 
     return papers

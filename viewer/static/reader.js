@@ -330,6 +330,66 @@ function renderFootnotes() {
   box.classList.toggle("empty", seen.size === 0);
 }
 
+/** 그 블록으로 눈이 가도록 잠깐 깜빡인다. 검색 결과로 뛰어왔을 때
+ *  "어디가 걸린 건데?" 를 없애준다. */
+function flash(blockId) {
+  const el = document.getElementById(blockId);
+  if (!el) return;
+  el.classList.add("flash");
+  setTimeout(() => el.classList.remove("flash"), 1400);
+}
+
+// ─── 논문 안에서 찾기 ───────────────────────────────────
+// 논문 JSON 은 이미 브라우저에 있으므로 서버에 묻지 않는다. 즉시 답이 나온다.
+
+function searchInBook(query) {
+  const box = $("#find-results");
+  box.innerHTML = "";
+  query = query.trim();
+  if (query.length < 2) return;
+
+  const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+  let count = 0;
+
+  for (const el of $("#book").querySelectorAll("[data-block]")) {
+    const text = el.textContent;
+    const m = re.exec(text);
+    if (!m) continue;
+    count++;
+    if (count > 60) break;
+
+    const start = Math.max(0, m.index - 32);
+    const item = document.createElement("a");
+    item.className = "find-hit";
+    item.href = "#";
+    const before = text.slice(start, m.index);
+    const hit = text.slice(m.index, m.index + query.length);
+    const after = text.slice(m.index + query.length, m.index + query.length + 42);
+    item.innerHTML =
+      `<span class="fh-page"></span>` +
+      `<span class="fh-text">${start ? "…" : ""}${escapeHtml(before)}` +
+      `<mark>${escapeHtml(hit)}</mark>${escapeHtml(after)}…</span>`;
+    item.querySelector(".fh-page").textContent = `${pageOf(el) + 1}쪽`;
+    item.addEventListener("click", (e) => {
+      e.preventDefault();
+      gotoBlock(el.dataset.block);
+      flash(el.dataset.block);
+    });
+    box.appendChild(item);
+  }
+
+  if (!count) {
+    const none = document.createElement("p");
+    none.className = "find-none";
+    none.textContent = "찾은 것이 없다.";
+    box.appendChild(none);
+  }
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 // ─── 목차 ───────────────────────────────────────────────
 
 function buildToc(nodes, parent) {
@@ -537,24 +597,37 @@ async function main() {
   $("#lang").disabled = !hasTranslation;
   $("#lang").title = hasTranslation ? "원문 ↔ 번역" : "이 논문은 번역되지 않았다";
 
+  // 책장에서 검색 결과를 눌러 들어온 경우: ?goto=b0012&lang=translated
+  const params = new URLSearchParams(location.search);
+  const jumpTo = params.get("goto");
+  if (params.get("lang") === "translated" && hasTranslation) App.lang = "translated";
+
   const book = $("#book");
   for (const block of App.paper.blocks) book.appendChild(renderBlock(block));
   renderMath(book);
   await waitForImages(book);
 
   buildToc(App.paper.toc, $("#toc-list"));
+  $("#lang").textContent = App.lang === "translated" ? "번역" : "원문";
+  $("#lang").classList.toggle("on", App.lang === "translated");
 
-  // 저장된 상태를 불러온다
+  // 저장된 상태를 불러온다. 실패해도 읽기는 되어야 하므로 기본값으로 넘어간다.
+  let state = { position: null, bookmarks: [], highlights: [] };
   try {
-    const state = await api("");
-    App.highlights = state.highlights;
-    App.bookmarks = new Set(state.bookmarks.map((b) => b.block_id));
-    applyHighlights();
-    measure();
-    if (state.position) gotoBlock(state.position);
-    else goto(0);
-  } catch {
-    measure();
+    state = await api("");
+  } catch {}
+  App.highlights = state.highlights;
+  App.bookmarks = new Set(state.bookmarks.map((b) => b.block_id));
+  applyHighlights();
+
+  measure();
+  // 검색 결과로 들어왔으면 그 자리, 아니면 마지막 읽던 자리
+  if (jumpTo && document.getElementById(jumpTo)) {
+    gotoBlock(jumpTo);
+    flash(jumpTo);
+  } else if (state.position && document.getElementById(state.position)) {
+    gotoBlock(state.position);
+  } else {
     goto(0);
   }
 
@@ -567,6 +640,24 @@ async function main() {
   $(".tap.left").addEventListener("click", () => goto(App.page - 1));
   $("#toc-toggle").addEventListener("click", () => $("#toc").classList.toggle("open"));
   $("#bookmark").addEventListener("click", toggleBookmark);
+
+  const findPanel = $("#find");
+  const openFind = () => {
+    findPanel.classList.add("open");
+    $("#find-input").focus();
+    $("#find-input").select();
+  };
+  $("#find-toggle").addEventListener("click", () =>
+    findPanel.classList.contains("open")
+      ? findPanel.classList.remove("open")
+      : openFind()
+  );
+  $("#find-close").addEventListener("click", () => findPanel.classList.remove("open"));
+  let findTimer;
+  $("#find-input").addEventListener("input", (e) => {
+    clearTimeout(findTimer);
+    findTimer = setTimeout(() => searchInBook(e.target.value), 160);
+  });
   $("#lang").addEventListener("click", () =>
     setLang(App.lang === "original" ? "translated" : "original")
   );
@@ -588,6 +679,19 @@ async function main() {
   }
 
   document.addEventListener("keydown", (e) => {
+    // Ctrl+F 는 브라우저 찾기 대신 우리 찾기를 연다. 브라우저 찾기는 다른 페이지(단)에
+    // 있는 글자를 찾아도 화면을 그리로 옮겨주지 못해서 쓸모가 없다.
+    if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+      e.preventDefault();
+      openFind();
+      return;
+    }
+    if (e.key === "Escape") {
+      findPanel.classList.remove("open");
+      $("#ref-popup").classList.remove("open");
+      hidePopup();
+      return;
+    }
     if (e.target.tagName === "INPUT") return;
     if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") {
       e.preventDefault();
