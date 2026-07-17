@@ -1,0 +1,264 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/paper-reader/schema/paper.schema.json",
+  "title": "Paper Reader 중간 JSON",
+  "description": "전처리 파이프라인(pipeline/)과 뷰어(viewer/)를 잇는 계약. 페이지 개념은 없다 — 페이지 나누기는 뷰어가 화면 크기·글자 크기를 보고 매번 계산한다.",
+  "type": "object",
+  "required": ["schema_version", "meta", "toc", "blocks", "references"],
+  "additionalProperties": false,
+
+  "properties": {
+    "schema_version": {
+      "description": "이 스키마의 버전. 깨지는 변경이 생기면 올린다.",
+      "const": "1.0"
+    },
+
+    "meta": {
+      "type": "object",
+      "required": ["title", "authors", "source_pdf", "lang"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string" },
+        "authors": { "type": "array", "items": { "type": "string" } },
+        "year": { "type": ["integer", "null"] },
+        "source_pdf": {
+          "description": "원본 PDF 파일명 (경로 아님)",
+          "type": "string"
+        },
+        "lang": {
+          "description": "원문 언어. DeepL source_lang 으로 쓴다.",
+          "type": "string",
+          "examples": ["en"]
+        },
+        "doi": { "type": ["string", "null"] },
+        "arxiv_id": { "type": ["string", "null"] },
+        "translated_lang": {
+          "description": "번역 언어. 번역 안 했으면 null.",
+          "type": ["string", "null"],
+          "examples": ["ko"]
+        }
+      }
+    },
+
+    "toc": {
+      "description": "세분화 목차. 중첩 구조이며, 각 항목은 blocks 안의 heading 블록을 가리킨다.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/tocNode" }
+    },
+
+    "blocks": {
+      "description": "본문 전체. 이 배열의 순서가 곧 읽기 순서다. 뷰어는 이 순서대로 흘려서 페이지를 만든다.",
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "#/definitions/headingBlock" },
+          { "$ref": "#/definitions/paragraphBlock" },
+          { "$ref": "#/definitions/figureBlock" },
+          { "$ref": "#/definitions/tableBlock" },
+          { "$ref": "#/definitions/equationBlock" },
+          { "$ref": "#/definitions/listBlock" }
+        ]
+      }
+    },
+
+    "references": {
+      "description": "참고문헌 목록. 본문 블록의 <c> 태그가 여기 id 를 가리킨다.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/reference" }
+    }
+  },
+
+  "definitions": {
+    "blockId": {
+      "description": "블록 고유 id. 읽던 위치·북마크·하이라이트가 이 id 를 기준으로 저장된다. 재처리해도 안정적이어야 한다.",
+      "type": "string",
+      "pattern": "^b[0-9]{4}$"
+    },
+
+    "sectionId": {
+      "type": "string",
+      "pattern": "^sec[0-9]+(\\.[0-9]+)*$"
+    },
+
+    "tocNode": {
+      "type": "object",
+      "required": ["id", "title", "level", "block_id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/sectionId" },
+        "title": { "type": "string" },
+        "title_translated": { "type": ["string", "null"] },
+        "level": {
+          "description": "1 = 최상위 섹션. 중첩 깊이.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "block_id": {
+          "description": "이 섹션이 시작되는 heading 블록의 id. 목차 클릭 시 여기로 이동.",
+          "$ref": "#/definitions/blockId"
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/tocNode" }
+        }
+      }
+    },
+
+    "inlineMath": {
+      "description": "문단 안에 박힌 수식. text_original 의 <m id=\"...\"/> 태그가 이걸 가리킨다.",
+      "type": "object",
+      "required": ["id", "latex"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^m[0-9]+$" },
+        "latex": { "type": "string" }
+      }
+    },
+
+    "headingBlock": {
+      "type": "object",
+      "required": ["id", "type", "section_id", "text_original", "level"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/blockId" },
+        "type": { "const": "heading" },
+        "section_id": { "$ref": "#/definitions/sectionId" },
+        "level": { "type": "integer", "minimum": 1 },
+        "text_original": { "type": "string" },
+        "text_translated": { "type": ["string", "null"] }
+      }
+    },
+
+    "paragraphBlock": {
+      "type": "object",
+      "required": ["id", "type", "section_id", "text_original"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/blockId" },
+        "type": { "const": "paragraph" },
+        "section_id": { "$ref": "#/definitions/sectionId" },
+        "text_original": {
+          "description": "인라인 태그를 포함한 XML-safe 텍스트. <c id=\"ref12\"/> = 인용, <m id=\"m1\"/> = 인라인 수식. 이 두 태그는 DeepL ignore_tags 로 보호된다. 그 외 &<> 는 이스케이프.",
+          "type": "string"
+        },
+        "text_translated": {
+          "description": "번역문. 원문과 동일한 태그 집합을 반드시 보존한다 (위치는 어순에 따라 달라질 수 있음).",
+          "type": ["string", "null"]
+        },
+        "inline_math": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/inlineMath" }
+        },
+        "citations": {
+          "description": "이 블록이 참조하는 참고문헌 id 목록. 뷰어가 각주를 페이지 하단에 모을 때 쓴다.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+
+    "listBlock": {
+      "type": "object",
+      "required": ["id", "type", "section_id", "items_original"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/blockId" },
+        "type": { "const": "list" },
+        "section_id": { "$ref": "#/definitions/sectionId" },
+        "ordered": { "type": "boolean", "default": false },
+        "items_original": {
+          "description": "각 항목은 paragraph 와 같은 인라인 태그 규칙을 따른다.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "items_translated": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
+        "inline_math": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/inlineMath" }
+        },
+        "citations": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "figureBlock": {
+      "type": "object",
+      "required": ["id", "type", "section_id", "image_path", "caption_original"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/blockId" },
+        "type": { "const": "figure" },
+        "section_id": { "$ref": "#/definitions/sectionId" },
+        "image_path": {
+          "description": "논문 폴더 기준 상대 경로. 예: figures/fig1.png",
+          "type": "string"
+        },
+        "caption_original": { "type": "string" },
+        "caption_translated": { "type": ["string", "null"] },
+        "full_page": {
+          "description": "true 면 뷰어가 이 블록만 한 쪽에 통째로 배치한다 (캡션 포함).",
+          "type": "boolean",
+          "default": true
+        },
+        "citations": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "tableBlock": {
+      "type": "object",
+      "required": ["id", "type", "section_id", "table_html_original", "caption_original"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/blockId" },
+        "type": { "const": "table" },
+        "section_id": { "$ref": "#/definitions/sectionId" },
+        "table_html_original": {
+          "description": "Docling 이 뽑은 표 HTML (<table>...</table>). 뷰어가 그대로 렌더.",
+          "type": "string"
+        },
+        "table_html_translated": { "type": ["string", "null"] },
+        "caption_original": { "type": "string" },
+        "caption_translated": { "type": ["string", "null"] },
+        "full_page": { "type": "boolean", "default": true },
+        "citations": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "equationBlock": {
+      "description": "독립된 줄에 놓이는 수식 (display math). 번역 대상이 아니다.",
+      "type": "object",
+      "required": ["id", "type", "section_id", "latex"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/blockId" },
+        "type": { "const": "equation" },
+        "section_id": { "$ref": "#/definitions/sectionId" },
+        "latex": {
+          "description": "KaTeX 가 바로 렌더할 수 있는 LaTeX. $$ 구분자는 포함하지 않는다.",
+          "type": "string"
+        },
+        "number": {
+          "description": "논문에 붙은 수식 번호. 예: \"(3)\"",
+          "type": ["string", "null"]
+        }
+      }
+    },
+
+    "reference": {
+      "type": "object",
+      "required": ["id", "marker", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^ref[0-9]+$" },
+        "marker": {
+          "description": "본문에 보이는 표시. 예: \"[12]\"",
+          "type": "string"
+        },
+        "text": { "type": "string" },
+        "doi": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

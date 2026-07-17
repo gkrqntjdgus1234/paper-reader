@@ -1,0 +1,25 @@
+# 비밀 정보
+.env
+
+# 처리 결과물 (논문 원문·번역 결과는 공개 저장소에 올리지 않음)
+# data/ 가 아니라 data/* 여야 아래 .gitkeep 예외가 동작한다
+data/*
+!data/.gitkeep
+
+# 번역 캐시
+.cache/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Docling 모델 캐시
+.docling/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

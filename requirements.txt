@@ -1,0 +1,11 @@
+# Phase 1 — 전처리 파이프라인
+docling
+deepl
+python-dotenv
+requests
+
+# Phase 2 — 뷰어
+flask
+
+# 개발용 — 중간 JSON이 스키마를 만족하는지 검증
+jsonschema

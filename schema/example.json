@@ -1,0 +1,89 @@
+{
+  "schema_version": "1.0",
+  "meta": {
+    "title": "Attention Is All You Need",
+    "authors": ["Ashish Vaswani", "Noam Shazeer"],
+    "year": 2017,
+    "source_pdf": "attention.pdf",
+    "lang": "en",
+    "doi": null,
+    "arxiv_id": "1706.03762",
+    "translated_lang": "ko"
+  },
+
+  "toc": [
+    {
+      "id": "sec1",
+      "title": "Introduction",
+      "title_translated": "서론",
+      "level": 1,
+      "block_id": "b0001",
+      "children": [
+        {
+          "id": "sec1.1",
+          "title": "Background",
+          "title_translated": "배경",
+          "level": 2,
+          "block_id": "b0005",
+          "children": []
+        }
+      ]
+    }
+  ],
+
+  "blocks": [
+    {
+      "id": "b0001",
+      "type": "heading",
+      "section_id": "sec1",
+      "level": 1,
+      "text_original": "Introduction",
+      "text_translated": "서론"
+    },
+    {
+      "id": "b0002",
+      "type": "paragraph",
+      "section_id": "sec1",
+      "text_original": "Recurrent models <c id=\"ref12\"/> factor computation along positions, where the hidden state <m id=\"m1\"/> is a function of the previous state.",
+      "text_translated": "순환 모델 <c id=\"ref12\"/> 은 위치를 따라 계산을 분해하며, 이때 은닉 상태 <m id=\"m1\"/> 는 이전 상태의 함수이다.",
+      "inline_math": [
+        { "id": "m1", "latex": "h_t" }
+      ],
+      "citations": ["ref12"]
+    },
+    {
+      "id": "b0003",
+      "type": "equation",
+      "section_id": "sec1",
+      "latex": "\\mathrm{Attention}(Q,K,V) = \\mathrm{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V",
+      "number": "(1)"
+    },
+    {
+      "id": "b0004",
+      "type": "figure",
+      "section_id": "sec1",
+      "image_path": "figures/fig1.png",
+      "caption_original": "Figure 1: The Transformer model architecture.",
+      "caption_translated": "그림 1: 트랜스포머 모델 구조.",
+      "full_page": true,
+      "citations": []
+    },
+    {
+      "id": "b0005",
+      "type": "heading",
+      "section_id": "sec1.1",
+      "level": 2,
+      "text_original": "Background",
+      "text_translated": "배경"
+    }
+  ],
+
+  "references": [
+    {
+      "id": "ref12",
+      "marker": "[12]",
+      "text": "Hochreiter, S. and Schmidhuber, J. Long short-term memory. Neural Computation, 1997.",
+      "doi": "10.1162/neco.1997.9.8.1735"
+    }
+  ]
+}
