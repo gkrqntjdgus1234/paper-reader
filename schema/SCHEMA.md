@@ -58,6 +58,17 @@ display 수식을 별도 블록으로 뺀 이유는 페이지네이션 때문이
 
 DeepL 키가 없거나 무료 한도(월 50만 자)를 넘겨도 파이프라인이 통째로 죽지 않게 하려는 것이다.
 
+## 4-2. 그림은 `image_paths` — 배열인 이유
+
+한 그림에 이미지가 여러 개일 수 있다. (a)(b) 로 나뉜 복합 그림이 캡션 하나를 공유한다.
+
+실측(FireMan 논문 Fig. 6): Docling 아이템 순서가 `PictureItem, PictureItem, caption` 이었다.
+두 이미지가 "Fig. 6: Semi-automatic annotation with thermal and RGB image annotation"
+캡션 하나를 나눠 갖는다.
+
+처음엔 `image_path` 단수로 두었다가 실제 논문을 보고 배열로 바꿨다. 뷰어는 한 블록의
+이미지들을 한 쪽에 나란히 배치한다 — 원래 논문에서도 나란히 있던 것들이다.
+
 ## 5. 그림·표는 기본이 `full_page: true`
 
 계획대로 그림·표는 한 쪽 통째로 배치한다. 다만 플래그로 둔 이유는, 작은 그림까지 한 쪽을

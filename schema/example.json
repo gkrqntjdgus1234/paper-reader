@@ -62,7 +62,7 @@
       "id": "b0004",
       "type": "figure",
       "section_id": "sec1",
-      "image_path": "figures/fig1.png",
+      "image_paths": ["figures/fig001.png"],
       "caption_original": "Figure 1: The Transformer model architecture.",
       "caption_translated": "그림 1: 트랜스포머 모델 구조.",
       "full_page": true,

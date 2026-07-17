@@ -185,15 +185,17 @@
 
     "figureBlock": {
       "type": "object",
-      "required": ["id", "type", "section_id", "image_path", "caption_original"],
+      "required": ["id", "type", "section_id", "image_paths", "caption_original"],
       "additionalProperties": false,
       "properties": {
         "id": { "$ref": "#/definitions/blockId" },
         "type": { "const": "figure" },
         "section_id": { "$ref": "#/definitions/sectionId" },
-        "image_path": {
-          "description": "논문 폴더 기준 상대 경로. 예: figures/fig1.png",
-          "type": "string"
+        "image_paths": {
+          "description": "논문 폴더 기준 상대 경로. 예: ['figures/fig001.png']. 배열인 이유는 (a)(b) 로 나뉜 복합 그림이 캡션 하나를 공유하기 때문이다 (실측: FireMan 논문 Fig. 6). 뷰어는 이들을 한 쪽에 나란히 배치한다.",
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
         },
         "caption_original": { "type": "string" },
         "caption_translated": { "type": ["string", "null"] },
