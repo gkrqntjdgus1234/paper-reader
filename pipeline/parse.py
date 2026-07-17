@@ -40,15 +40,25 @@ def has_text_layer(pdf: Path) -> bool:
         return False
 
 
-def parse_pdf(pdf: Path, cache_dir: Path | None = None, force: bool = False):
+def parse_pdf(
+    pdf: Path,
+    cache_dir: Path | None = None,
+    force: bool = False,
+    pages: tuple[int, int] | None = None,
+):
     """PDF를 DoclingDocument 로 변환한다. cache_dir 를 주면 결과를 캐싱한다.
+
+    pages 로 페이지 범위를 좁힐 수 있다. 수식이 많은 논문은 수식 모델이 페이지마다
+    돌아 아주 느리므로, 확인만 하려면 일부만 돌리는 게 낫다.
 
     첫 변환은 모델 다운로드까지 겹쳐 수 분 걸린다. 이후는 캐시에서 즉시 로드된다.
     """
     cache_file = None
     if cache_dir:
         cache_dir.mkdir(parents=True, exist_ok=True)
-        cache_file = cache_dir / f"{pdf.stem}.docling.pkl"
+        # 페이지 범위가 다르면 결과도 다르다. 캐시 이름에 범위를 넣어 섞이지 않게 한다.
+        suffix = f".p{pages[0]}-{pages[1]}" if pages else ""
+        cache_file = cache_dir / f"{pdf.stem}{suffix}.docling.pkl"
         if cache_file.exists() and not force:
             logger.info("캐시된 파싱 결과 사용: %s", cache_file.name)
             return pickle.loads(cache_file.read_bytes())
@@ -68,14 +78,16 @@ def parse_pdf(pdf: Path, cache_dir: Path | None = None, force: bool = False):
     opts.images_scale = 2.0              # 기본 1.0 은 저해상도라 읽기 힘들다
 
     logger.info(
-        "Docling 변환 시작: %s (OCR=%s, 수식인식=ON) — 처음이면 수 분 걸린다",
+        "Docling 변환 시작: %s (OCR=%s, 수식인식=ON%s) — 처음이면 수 분 걸린다",
         pdf.name, "ON" if ocr else "OFF",
+        f", {pages[0]}~{pages[1]}쪽만" if pages else "",
     )
 
     converter = DocumentConverter(
         format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=opts)}
     )
-    doc = converter.convert(str(pdf)).document
+    kwargs = {"page_range": pages} if pages else {}
+    doc = converter.convert(str(pdf), **kwargs).document
 
     if cache_file:
         cache_file.write_bytes(pickle.dumps(doc))

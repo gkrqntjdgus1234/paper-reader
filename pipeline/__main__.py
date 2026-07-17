@@ -65,6 +65,9 @@ def main() -> int:
     ap.add_argument("-o", "--out", type=Path, default=Path("data"),
                     help="결과를 넣을 폴더 (기본: data/)")
     ap.add_argument("--force", action="store_true", help="캐시를 무시하고 다시 파싱")
+    ap.add_argument("--pages", metavar="A-B",
+                    help="이 페이지 범위만 처리한다 (예: 5-10). 수식이 많은 논문을 "
+                         "빠르게 확인할 때 쓴다")
     ap.add_argument("--no-translate", action="store_true",
                     help="번역을 건너뛴다 (원문만)")
     ap.add_argument("--offline", action="store_true",
@@ -83,10 +86,21 @@ def main() -> int:
         logger.error("PDF 를 찾을 수 없다: %s", args.pdf)
         return 1
 
-    paper_dir = args.out / args.pdf.stem
+    pages = None
+    if args.pages:
+        try:
+            a, b = (int(x) for x in args.pages.split("-", 1))
+            pages = (a, b)
+        except ValueError:
+            logger.error("--pages 는 5-10 형태여야 한다: %r", args.pages)
+            return 1
+
+    # 부분 처리 결과가 전체 논문을 덮어쓰면 안 된다 — 다른 폴더에 넣는다
+    name = args.pdf.stem + (f" (p{pages[0]}-{pages[1]})" if pages else "")
+    paper_dir = args.out / name
     paper_dir.mkdir(parents=True, exist_ok=True)
 
-    doc = parse_pdf(args.pdf, cache_dir=paper_dir / ".cache", force=args.force)
+    doc = parse_pdf(args.pdf, cache_dir=paper_dir / ".cache", force=args.force, pages=pages)
 
     logger.info("중간 JSON 으로 변환 중...")
     paper = convert(doc, source_pdf=args.pdf.name, figures_dir=paper_dir / "figures")
