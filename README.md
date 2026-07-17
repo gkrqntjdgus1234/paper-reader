@@ -49,12 +49,32 @@ cp .env.example .env
 
 ## 사용법
 
-> Phase 1·2에서 구현 예정.
+전처리는 논문당 한 번만 하면 된다.
 
 ```bash
-python -m pipeline paper.pdf     # 전처리 → data/paper/paper.json
-python -m viewer                 # http://localhost:5000
+python -m pipeline data/input/paper.pdf     # → data/paper/paper.json
 ```
+
+| 옵션 | 뜻 |
+|------|-----|
+| `--no-translate` | 번역 없이 원문만 (DeepL 한도를 아낀다) |
+| `--offline` | 네트워크를 쓰지 않는다 (CrossRef 조회 생략) |
+| `--force` | 캐시를 무시하고 다시 파싱 |
+| `--lang KO` | 번역 언어 (기본 KO) |
+
+첫 실행은 Docling 모델을 받느라 수 분 걸린다. 이후 같은 논문은 캐시에서 즉시 열린다.
+
+```bash
+python -m viewer                 # http://localhost:5000  (Phase 2에서 구현)
+```
+
+## 알려진 환경 문제 (Windows)
+
+- **설치 직후 첫 실행이 한 번 실패할 수 있다.** Smart App Control 이 갓 받은 패키지를
+  잠시 차단하기 때문이다 (`애플리케이션 제어 정책에서 이 파일을 차단했습니다`).
+  설치가 깨진 게 아니므로 그냥 다시 실행하면 된다.
+- **한국어 Windows 의 cp949 문제는 프로그램이 알아서 처리한다.** UTF-8 모드로 스스로
+  재실행하므로 `PYTHONUTF8=1` 을 붙일 필요가 없다.
 
 ## 폴더 구조
 
@@ -79,7 +99,7 @@ python -m viewer                 # http://localhost:5000
 ## 개발 현황
 
 - [x] **Phase 0** — 프로젝트 뼈대, JSON 스키마 확정
-- [ ] **Phase 1** — 전처리 파이프라인 (Docling · 번역 · 참고문헌 · 메타데이터)
+- [x] **Phase 1** — 전처리 파이프라인 (Docling · 번역 · 참고문헌 · 메타데이터)
 - [ ] **Phase 2** — 뷰어 골격 (목차 · KaTeX · 페이지네이션 엔진)
 - [ ] **Phase 3** — Kindle 읽기 경험 (페이지 넘김 · 번역 토글 · 각주 · 하이라이트)
 - [ ] **Phase 4** — 라이브러리 · 검색 · 데모

@@ -44,7 +44,13 @@ def _ensure_utf8_mode() -> None:
 _ensure_utf8_mode()
 
 from pipeline.convert import convert          # noqa: E402  (UTF-8 모드 확정 후 import)
+from pipeline.metadata import enrich          # noqa: E402
 from pipeline.parse import parse_pdf          # noqa: E402
+from pipeline.translate import (              # noqa: E402
+    TranslationCache,
+    make_translator,
+    translate_paper,
+)
 from pipeline.validate import validate_paper  # noqa: E402
 
 logger = logging.getLogger("pipeline")
@@ -59,6 +65,12 @@ def main() -> int:
     ap.add_argument("-o", "--out", type=Path, default=Path("data"),
                     help="결과를 넣을 폴더 (기본: data/)")
     ap.add_argument("--force", action="store_true", help="캐시를 무시하고 다시 파싱")
+    ap.add_argument("--no-translate", action="store_true",
+                    help="번역을 건너뛴다 (원문만)")
+    ap.add_argument("--offline", action="store_true",
+                    help="네트워크를 쓰지 않는다 (CrossRef 조회 생략)")
+    ap.add_argument("--lang", default=os.environ.get("DEEPL_TARGET_LANG", "KO"),
+                    help="번역 언어 (기본: KO)")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
 
@@ -78,6 +90,13 @@ def main() -> int:
 
     logger.info("중간 JSON 으로 변환 중...")
     paper = convert(doc, source_pdf=args.pdf.name, figures_dir=paper_dir / "figures")
+
+    paper["meta"] = enrich(paper["meta"], args.pdf, offline=args.offline)
+
+    if not args.no_translate:
+        translator = make_translator(target_lang=args.lang)
+        cache = TranslationCache(args.out / ".translation-cache.json")
+        paper = translate_paper(paper, translator, cache, target_lang=args.lang.lower())
 
     errors = validate_paper(paper)
     if errors:
