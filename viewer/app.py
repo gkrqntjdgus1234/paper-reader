@@ -15,6 +15,7 @@ from pathlib import Path
 from flask import Flask, abort, jsonify, render_template, request, send_from_directory
 
 from viewer.db import Store
+from viewer.jobs import JobRegistry, safe_name
 from viewer.library import reading_progress, scan
 from viewer.search import search_all
 
@@ -25,7 +26,10 @@ DATA_DIR = ROOT / "data"
 def create_app(data_dir: Path = DATA_DIR) -> Flask:
     app = Flask(__name__)
     app.config["DATA_DIR"] = data_dir
+    # 논문 PDF 는 보통 수 MB ~ 수십 MB 다 (실측: 2.8MB, 14.5MB)
+    app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
     store = Store(data_dir / "reader.sqlite3")
+    jobs = JobRegistry()
 
     def papers():
         # 매 요청마다 훑는다. 논문 수가 수십 개 수준이라 충분히 빠르고,
@@ -47,6 +51,36 @@ def create_app(data_dir: Path = DATA_DIR) -> Flask:
         return render_template(
             "library.html", papers=items, progress=progress, counts=counts
         )
+
+    # ─── 논문 가져오기 ──────────────────────────────────
+    # 앱 안에서 PDF 를 넣는다. 전처리는 오래 걸리므로 백그라운드로 돌리고
+    # 화면은 진행 상황만 물어본다.
+
+    @app.route("/api/import", methods=["POST"])
+    def api_import():
+        file = request.files.get("pdf")
+        if not file or not file.filename:
+            return jsonify({"error": "PDF 파일을 골라 주세요."}), 400
+        if not file.filename.lower().endswith(".pdf"):
+            return jsonify({"error": "PDF 파일만 넣을 수 있습니다."}), 400
+
+        input_dir = app.config["DATA_DIR"] / "input"
+        input_dir.mkdir(parents=True, exist_ok=True)
+        target = input_dir / safe_name(file.filename)
+        file.save(target)
+
+        translate = request.form.get("translate") != "0"
+        job = jobs.start(target, translate, app.config["DATA_DIR"])
+        return jsonify(job.to_dict())
+
+    @app.route("/api/imports")
+    def api_imports():
+        return jsonify(jobs.list())
+
+    @app.route("/api/imports/clear", methods=["POST"])
+    def api_imports_clear():
+        jobs.clear_finished()
+        return jsonify({"ok": True})
 
     @app.route("/api/search")
     def api_search():

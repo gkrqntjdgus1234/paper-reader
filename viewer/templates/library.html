@@ -13,12 +13,49 @@
                   margin-bottom: 26px; }
 
     #q {
-      width: 100%; padding: 11px 14px; margin-bottom: 26px;
+      width: 100%; padding: 11px 14px; margin-bottom: 18px;
       background: transparent; color: var(--fg);
       border: 1px solid var(--line); border-radius: 8px;
       font-family: system-ui, sans-serif; font-size: 14px;
     }
     #q:focus { outline: none; border-color: var(--accent); }
+
+    /* ─── 논문 추가 ─── */
+    #drop {
+      border: 1.5px dashed var(--line); border-radius: 10px;
+      padding: 22px; margin-bottom: 26px; text-align: center;
+      font-family: system-ui, sans-serif; cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    #drop:hover, #drop.over { border-color: var(--accent); background: rgba(139,111,71,.06); }
+    #drop .big { font-size: 14px; margin-bottom: 5px; }
+    #drop .small { font-size: 12px; color: var(--muted); }
+    #drop input { display: none; }
+
+    .opt {
+      margin-top: 12px; font-size: 12.5px; color: var(--muted);
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .opt input { cursor: pointer; }
+
+    #jobs { margin-bottom: 26px; }
+    .job {
+      border: 1px solid var(--line); border-left-width: 3px; border-radius: 8px;
+      padding: 13px 16px; margin-bottom: 9px;
+      font-family: system-ui, sans-serif; font-size: 13px;
+    }
+    .job.running { border-left-color: var(--accent); }
+    .job.done    { border-left-color: #4a9d5f; }
+    .job.error   { border-left-color: #c0392b; }
+    .job .name { margin-bottom: 5px; word-break: break-all; }
+    .job .msg  { color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .job .time { float: right; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+    .spin {
+      display: inline-block; width: 9px; height: 9px; margin-right: 6px;
+      border: 2px solid var(--line); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
     .book-card {
       display: block; padding: 17px 20px; margin-bottom: 12px;
@@ -59,6 +96,18 @@
 
     <input id="q" type="search" placeholder="논문 전체에서 찾기 (원문·번역 모두)" autocomplete="off">
 
+    <div id="drop">
+      <div class="big">＋ 논문 PDF 추가</div>
+      <div class="small">여기를 누르거나 PDF 파일을 끌어다 놓으세요</div>
+      <input id="file" type="file" accept=".pdf,application/pdf" multiple>
+    </div>
+    <div class="opt">
+      <label><input id="translate" type="checkbox" checked> 한국어로 번역하기</label>
+    </div>
+    <div style="height:18px"></div>
+
+    <div id="jobs"></div>
+
     <div id="results"></div>
 
     <div id="shelf-list">
@@ -87,13 +136,108 @@
   </div>
 
   <script>
+    const escapeHtml = (s) =>
+      String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // ─── 논문 추가 ───────────────────────────────────────
+    const drop = document.querySelector('#drop');
+    const fileInput = document.querySelector('#file');
+    const jobsBox = document.querySelector('#jobs');
+    let polling = null;
+
+    drop.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      send([...fileInput.files]);
+      fileInput.value = '';   // 같은 파일을 다시 골라도 change 가 뜨도록
+    });
+
+    for (const ev of ['dragenter', 'dragover']) {
+      drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); });
+    }
+    for (const ev of ['dragleave', 'drop']) {
+      drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); });
+    }
+    drop.addEventListener('drop', (e) => {
+      send([...e.dataTransfer.files].filter(f => f.name.toLowerCase().endsWith('.pdf')));
+    });
+    // 창 아무 데나 떨어뜨렸을 때 브라우저가 PDF 를 열어버리지 않게 막는다
+    for (const ev of ['dragover', 'drop']) {
+      window.addEventListener(ev, (e) => e.preventDefault());
+    }
+
+    async function send(files) {
+      if (!files.length) return;
+      const translate = document.querySelector('#translate').checked ? '1' : '0';
+      for (const f of files) {
+        const body = new FormData();
+        body.append('pdf', f);
+        body.append('translate', translate);
+        try {
+          const res = await fetch('/api/import', { method: 'POST', body });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            alert(err.error || `${f.name} 을(를) 넣지 못했습니다.`);
+          }
+        } catch {
+          alert(`${f.name} 을(를) 넣지 못했습니다.`);
+        }
+      }
+      startPolling();
+    }
+
+    function fmtTime(sec) {
+      if (sec < 60) return `${sec}초`;
+      const m = Math.floor(sec / 60);
+      return m < 60 ? `${m}분 ${sec % 60}초` : `${Math.floor(m / 60)}시간 ${m % 60}분`;
+    }
+
+    function renderJobs(jobs) {
+      jobsBox.innerHTML = '';
+      for (const j of jobs) {
+        const el = document.createElement('div');
+        el.className = `job ${j.status}`;
+        const spin = j.status === 'running' ? '<span class="spin"></span>' : '';
+        const mark = j.status === 'done' ? '✓ ' : j.status === 'error' ? '✕ ' : '';
+        el.innerHTML =
+          `<span class="time">${fmtTime(j.elapsed)}</span>` +
+          `<div class="name">${mark}${escapeHtml(j.filename)}</div>` +
+          `<div class="msg">${spin}${escapeHtml(j.message)}</div>`;
+        jobsBox.appendChild(el);
+      }
+    }
+
+    async function poll() {
+      let jobs = [];
+      try {
+        jobs = await (await fetch('/api/imports')).json();
+      } catch { return; }
+
+      renderJobs(jobs);
+
+      if (!jobs.some(j => j.status === 'running')) {
+        clearInterval(polling);
+        polling = null;
+        // 새로 들어온 논문이 책장에 보이도록 새로고침. 성공한 게 있을 때만.
+        if (jobs.some(j => j.status === 'done')) {
+          await fetch('/api/imports/clear', { method: 'POST' }).catch(() => {});
+          setTimeout(() => location.reload(), 900);
+        }
+      }
+    }
+
+    function startPolling() {
+      poll();
+      if (!polling) polling = setInterval(poll, 1500);
+    }
+
+    // 새로고침해도 돌고 있던 작업이 이어 보이게 한다
+    startPolling();
+
+    // ─── 검색 ───────────────────────────────────────────
     const q = document.querySelector('#q');
     const results = document.querySelector('#results');
     const shelf = document.querySelector('#shelf-list');
     let timer;
-
-    const escapeHtml = (s) =>
-      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
     q.addEventListener('input', () => {
       clearTimeout(timer);
