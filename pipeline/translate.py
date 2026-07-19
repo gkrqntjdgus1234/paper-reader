@@ -110,7 +110,7 @@ class TranslationCache:
         logger.debug("번역 캐시 저장: %d개", len(self._data))
 
 
-def make_translator(target_lang: str = "KO") -> Translator:
+def make_translator(target_lang: str = "KO", source_lang: str = "EN") -> Translator:
     """.env 의 키를 보고 번역기를 만든다. 키가 없으면 NullTranslator."""
     try:
         from dotenv import load_dotenv
@@ -125,7 +125,7 @@ def make_translator(target_lang: str = "KO") -> Translator:
         return NullTranslator()
 
     try:
-        translator = DeepLTranslator(key, target_lang=target_lang)
+        translator = DeepLTranslator(key, target_lang=target_lang, source_lang=source_lang)
     except Exception as exc:
         logger.error("DeepL 초기화 실패 (%s) — 번역 없이 진행한다", exc)
         return NullTranslator()
@@ -156,6 +156,13 @@ def translate_paper(
 ) -> dict:
     """중간 JSON 의 번역 필드를 채운다. paper 를 제자리에서 수정한다."""
     if isinstance(translator, NullTranslator):
+        return paper
+
+    # 이미 읽을 수 있는 언어면 번역하지 않는다. 한국어 논문을 영어라고 우기며
+    # DeepL 에 보내면 한도만 쓰고 결과는 쓸모없어진다.
+    source_lang = (paper["meta"].get("lang") or "en").lower()
+    if source_lang == target_lang.lower():
+        logger.info("원문이 이미 %s 다 — 번역하지 않는다", source_lang)
         return paper
 
     # (텍스트, 되돌려 놓을 자리) 목록을 모은다

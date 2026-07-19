@@ -44,6 +44,7 @@ def _ensure_utf8_mode() -> None:
 _ensure_utf8_mode()
 
 from pipeline.convert import convert          # noqa: E402  (UTF-8 모드 확정 후 import)
+from pipeline.lang import detect_paper        # noqa: E402
 from pipeline.metadata import enrich          # noqa: E402
 from pipeline.parse import parse_pdf          # noqa: E402
 from pipeline.translate import (              # noqa: E402
@@ -107,8 +108,15 @@ def main() -> int:
 
     paper["meta"] = enrich(paper["meta"], args.pdf, offline=args.offline)
 
+    # 원문이 무슨 언어인지 본문을 보고 정한다. 이게 없으면 한국어 논문을 영어라고
+    # 우기며 DeepL 에 보내게 된다 (한도만 쓰고 결과는 쓸모없다).
+    paper["meta"]["lang"] = detect_paper(paper)
+    logger.info("원문 언어: %s", paper["meta"]["lang"])
+
     if not args.no_translate:
-        translator = make_translator(target_lang=args.lang)
+        translator = make_translator(
+            target_lang=args.lang, source_lang=paper["meta"]["lang"].upper()
+        )
         cache = TranslationCache(args.out / ".translation-cache.json")
         paper = translate_paper(paper, translator, cache, target_lang=args.lang.lower())
 
