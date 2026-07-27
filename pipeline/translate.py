@@ -37,6 +37,9 @@ class Translator(Protocol):
     def translate(self, texts: list[str]) -> list[str]:
         ...
 
+    def translate_html(self, htmls: list[str]) -> list[str]:
+        ...
+
 
 class DeepLTranslator:
     def __init__(self, api_key: str, target_lang: str = "KO", source_lang: str = "EN") -> None:
@@ -55,6 +58,22 @@ class DeepLTranslator:
             target_lang=self._target,
             tag_handling="xml",      # ← <c>/<m> 태그를 태그로 인식시킨다
             ignore_tags=["c", "m"],  # ← 그 안은 번역하지 않는다
+        )
+        return [r.text for r in results]
+
+    def translate_html(self, htmls: list[str]) -> list[str]:
+        """표처럼 HTML 구조가 있는 것을 번역한다.
+
+        tag_handling='html' 을 쓰면 <table><tr><td> 같은 구조는 그대로 두고
+        셀 안의 글자만 번역한다. 일반 텍스트와 태그 처리 방식이 달라 메서드를 나눴다.
+        """
+        if not htmls:
+            return []
+        results = self._client.translate_text(
+            htmls,
+            source_lang=self._source,
+            target_lang=self._target,
+            tag_handling="html",
         )
         return [r.text for r in results]
 
@@ -78,6 +97,9 @@ class NullTranslator:
 
     def translate(self, texts: list[str]) -> list[str]:
         return list(texts)
+
+    def translate_html(self, htmls: list[str]) -> list[str]:
+        return list(htmls)
 
 
 class TranslationCache:
@@ -233,8 +255,47 @@ def translate_paper(
             "태그가 어긋나 버린 번역 %d개 — 해당 부분은 원문으로 표시된다", dropped
         )
 
+    _translate_tables(paper, translator, cache, target_lang)
+
     paper["meta"]["translated_lang"] = target_lang
     return paper
+
+
+def _translate_tables(
+    paper: dict, translator: Translator, cache: TranslationCache, target_lang: str
+) -> None:
+    """표 안의 글자를 번역한다.
+
+    표는 HTML 구조가 있어 일반 텍스트와 다른 방식(tag_handling='html')으로 번역한다.
+    보통 논문에서 표는 숫자 위주라 후순위였는데, 목차를 표로 그린 문서가 있어서
+    (실측: EEMUA 규격 문서) 필요해졌다.
+
+    캐시 키가 섞이지 않게 앞에 표식을 붙인다 — 같은 문장이라도 xml 로 번역한 것과
+    html 로 번역한 결과가 다를 수 있다.
+    """
+    tables = [b for b in paper["blocks"] if b["type"] == "table" and b["table_html_original"]]
+    if not tables:
+        return
+
+    def key(html: str) -> str:
+        return "\x01html\x01" + html
+
+    todo = [t["table_html_original"] for t in tables
+            if cache.get(key(t["table_html_original"]), target_lang) is None]
+    if todo:
+        logger.info("표 %d개 번역 중…", len(todo))
+        for html in dict.fromkeys(todo):
+            try:
+                out = translator.translate_html([html])[0]
+                cache.put(key(html), target_lang, out)
+            except Exception as exc:
+                logger.warning("표 번역 실패 (%s) — 이 표는 원문으로 둔다", exc)
+        cache.save()
+
+    for block in tables:
+        result = cache.get(key(block["table_html_original"]), target_lang)
+        if result:
+            block["table_html_translated"] = result
 
 
 def _translate_batch(
@@ -243,11 +304,20 @@ def _translate_batch(
     try:
         results = translator.translate(batch)
     except Exception as exc:
-        logger.error("번역 실패 (%s) — 이 묶음은 원문으로 남는다", exc)
+        # 배치 하나가 실패하면 그 안의 전부를 잃는다. 문장 하나 때문에 수백 개가
+        # 날아가면 안 된다 (실측: 'A2 <= 1.20' 한 줄이 DeepL 의 xml 파서를 깨뜨려
+        # 405개 배치가 통째로 실패했다 — &lt;= 는 유효한 XML 인데 DeepL 이 오판한다).
+        # 반씩 쪼개 재시도해서 진짜 범인 하나만 원문으로 남긴다.
+        if len(batch) == 1:
+            logger.warning("번역 실패한 문장 하나는 원문으로 둔다: %r (%s)",
+                           batch[0][:50], str(exc)[:50])
+            return
+        mid = len(batch) // 2
+        _translate_batch(batch[:mid], translator, cache, target_lang)
+        _translate_batch(batch[mid:], translator, cache, target_lang)
         return
     for src, dst in zip(batch, results):
         cache.put(src, target_lang, dst)
-    logger.info("  %d개 번역 완료", len(batch))
 
 
 def _walk_toc(nodes: list[dict]):
