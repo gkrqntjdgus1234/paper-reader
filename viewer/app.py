@@ -128,6 +128,48 @@ def create_app(data_dir: Path = DATA_DIR) -> Flask:
         # send_from_directory 가 경로 탈출(../)을 막아준다
         return send_from_directory(paper.dir / "figures", filename)
 
+    @app.route("/print/<slug>")
+    def print_view(slug: str):
+        """Chrome 이 PDF 로 뽑을 인쇄용 페이지. 종이에 맞춰 흐르는 단순 레이아웃."""
+        from viewer.print_view import render_print_html
+
+        paper = papers().get(slug)
+        if not paper:
+            abort(404)
+        doc = json.loads(paper.json_path.read_text(encoding="utf-8"))
+        translated = request.args.get("translated") == "1" and bool(
+            doc.get("meta", {}).get("translated_lang")
+        )
+        return render_print_html(doc, slug, translated)
+
+    @app.route("/download/<slug>.pdf")
+    def download_pdf(slug: str):
+        """인쇄용 페이지를 Chrome 으로 PDF 변환해 내려준다."""
+        from viewer.pdf_export import html_url_to_pdf
+
+        paper = papers().get(slug)
+        if not paper:
+            abort(404)
+        doc = json.loads(paper.json_path.read_text(encoding="utf-8"))
+
+        translated = request.args.get("translated", "1")
+        port = request.host.split(":")[-1] if ":" in request.host else "5000"
+        url = f"http://127.0.0.1:{port}/print/{slug}?translated={translated}"
+
+        out = paper.dir / f"{slug}.pdf"
+        if not html_url_to_pdf(url, out):
+            return jsonify({
+                "error": "PDF 를 만들지 못했습니다. Chrome 이 설치돼 있어야 합니다. "
+                         "대신 EPUB 을 받아보세요."
+            }), 500
+
+        title = (doc.get("meta", {}).get("title") or slug)[:80]
+        safe = title.replace("/", "_").replace("\\", "_")
+        return send_file(
+            out, as_attachment=True, download_name=f"{safe}.pdf",
+            mimetype="application/pdf",
+        )
+
     @app.route("/download/<slug>.epub")
     def download_epub(slug: str):
         """핸드폰 전자책 앱으로 옮겨 읽도록 EPUB 로 내보낸다."""

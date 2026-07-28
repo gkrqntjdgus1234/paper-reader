@@ -573,11 +573,14 @@ function setLang(lang) {
   updateEpubLink();
 }
 
-/** EPUB 내려받기 링크가 지금 보는 언어를 따라가게 한다. 번역을 보고 있으면
- *  번역본 EPUB 을, 원문을 보고 있으면 원문 EPUB 을 받는다. */
+/** 내려받기 링크(EPUB·PDF)가 지금 보는 언어를 따라가게 한다. 번역을 보고 있으면
+ *  번역본을, 원문을 보고 있으면 원문을 받는다. */
 function updateEpubLink() {
-  const a = $("#epub");
-  if (a) a.href = `/download/${App.slug}.epub?translated=${App.lang === "translated" ? 1 : 0}`;
+  const t = App.lang === "translated" ? 1 : 0;
+  const epub = $("#epub");
+  if (epub) epub.href = `/download/${App.slug}.epub?translated=${t}`;
+  const pdf = $("#pdf");
+  if (pdf) pdf.href = `/download/${App.slug}.pdf?translated=${t}`;
 }
 
 // ─── 시작 ───────────────────────────────────────────────
@@ -649,6 +652,20 @@ async function main() {
   $(".tap.left").addEventListener("click", () => goto(App.page - 1));
   $("#toc-toggle").addEventListener("click", () => $("#toc").classList.toggle("open"));
   $("#bookmark").addEventListener("click", toggleBookmark);
+
+  // PDF 는 Chrome 으로 변환하느라 몇 초 걸린다. 만드는 동안 표시해서 재클릭을 막는다.
+  const pdfBtn = $("#pdf");
+  if (pdfBtn) {
+    pdfBtn.addEventListener("click", () => {
+      pdfBtn.classList.add("busy");
+      pdfBtn.textContent = "만드는 중…";
+      // 브라우저가 다운로드를 시작하면 이 페이지는 그대로 남는다. 넉넉히 뒤 되돌린다.
+      setTimeout(() => {
+        pdfBtn.classList.remove("busy");
+        pdfBtn.textContent = "PDF";
+      }, 12000);
+    });
+  }
 
   const findPanel = $("#find");
   const openFind = () => {
