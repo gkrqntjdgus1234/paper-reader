@@ -67,15 +67,21 @@ class SectionTracker:
         self._unnumbered_count = 0               # 직전 섹션 아래 번호 없는 제목 개수
 
     def next(self, heading_text: str) -> tuple[str, int, str]:
-        """반환: (section_id, level, 번호 뺀 제목)"""
-        nums, title, kind = parse_heading(heading_text)
+        """반환: (section_id, level, 표시용 제목).
+
+        표시용 제목은 번호를 포함한 원문이다. 번호는 계층(section_id)을 정하는 데만
+        쓰고 화면에서는 지우지 않는다 — "1.4 What is not included" 에서 "1.4" 가
+        사라지면 원문 대조가 어렵고 책처럼 읽기에도 어색하다.
+        """
+        display = heading_text.strip()
+        nums, _title, kind = parse_heading(heading_text)
 
         if nums is None:
             # 번호 없는 제목 → 직전 섹션의 자식으로 만든다
             self._unnumbered_count += 1
             parent = self._current or (0,)
             path = parent + (self._unnumbered_count,)
-            return _sec_id(path), len(path), title
+            return _sec_id(path), len(path), display
 
         if kind == "alpha" and self._current:
             # IEEE 의 "A." 는 직전 로마숫자 섹션의 하위다: III + A → (3, 1)
@@ -85,7 +91,7 @@ class SectionTracker:
 
         self._current = path
         self._unnumbered_count = 0
-        return _sec_id(path), len(path), title
+        return _sec_id(path), len(path), display
 
 
 def _sec_id(path: tuple[int, ...]) -> str:
