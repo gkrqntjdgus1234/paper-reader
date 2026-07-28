@@ -12,7 +12,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from flask import Flask, abort, jsonify, render_template, request, send_from_directory
+from flask import (
+    Flask,
+    abort,
+    jsonify,
+    render_template,
+    request,
+    send_file,
+    send_from_directory,
+)
 
 from viewer.db import Store
 from viewer.jobs import JobRegistry, safe_name
@@ -119,6 +127,31 @@ def create_app(data_dir: Path = DATA_DIR) -> Flask:
             abort(404)
         # send_from_directory 가 경로 탈출(../)을 막아준다
         return send_from_directory(paper.dir / "figures", filename)
+
+    @app.route("/download/<slug>.epub")
+    def download_epub(slug: str):
+        """핸드폰 전자책 앱으로 옮겨 읽도록 EPUB 로 내보낸다."""
+        from pipeline.epub import build_epub
+
+        paper = papers().get(slug)
+        if not paper:
+            abort(404)
+        doc = json.loads(paper.json_path.read_text(encoding="utf-8"))
+
+        # 번역본을 원하는지 (기본은 번역이 있으면 번역본)
+        translated = request.args.get("translated")
+        want = None if translated is None else translated == "1"
+
+        out = paper.dir / f"{slug}.epub"
+        build_epub(doc, paper.dir, out, translated=want)
+
+        # 파일 이름은 논문 제목으로 (한글 파일명도 되도록 UTF-8)
+        title = (doc.get("meta", {}).get("title") or slug)[:80]
+        safe = title.replace("/", "_").replace("\\", "_")
+        return send_file(
+            out, as_attachment=True, download_name=f"{safe}.epub",
+            mimetype="application/epub+zip",
+        )
 
     # ─── 읽기 상태 ──────────────────────────────────────
     # 전부 블록 id 기준이다. 페이지 번호는 글자 크기가 바뀌면 의미를 잃는다.

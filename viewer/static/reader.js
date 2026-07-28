@@ -570,6 +570,14 @@ function setLang(lang) {
 
   $("#lang").textContent = lang === "translated" ? "번역" : "원문";
   $("#lang").classList.toggle("on", lang === "translated");
+  updateEpubLink();
+}
+
+/** EPUB 내려받기 링크가 지금 보는 언어를 따라가게 한다. 번역을 보고 있으면
+ *  번역본 EPUB 을, 원문을 보고 있으면 원문 EPUB 을 받는다. */
+function updateEpubLink() {
+  const a = $("#epub");
+  if (a) a.href = `/download/${App.slug}.epub?translated=${App.lang === "translated" ? 1 : 0}`;
 }
 
 // ─── 시작 ───────────────────────────────────────────────
@@ -610,6 +618,7 @@ async function main() {
   buildToc(App.paper.toc, $("#toc-list"));
   $("#lang").textContent = App.lang === "translated" ? "번역" : "원문";
   $("#lang").classList.toggle("on", App.lang === "translated");
+  updateEpubLink();
 
   // 저장된 상태를 불러온다. 실패해도 읽기는 되어야 하므로 기본값으로 넘어간다.
   let state = { position: null, bookmarks: [], highlights: [] };

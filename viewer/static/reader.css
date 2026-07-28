@@ -398,6 +398,20 @@ figcaption, .table-caption {
 #bar button:hover { border-color: var(--accent); color: var(--accent); }
 #bar button:disabled { opacity: .35; cursor: default; }
 #bar button:disabled:hover { border-color: var(--line); color: var(--fg); }
+#bar a#epub {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--fg);
+  padding: 5px 11px;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-family: inherit;
+  text-decoration: none;
+  flex: none;
+}
+#bar a#epub:hover { border-color: var(--accent); color: var(--accent); }
+
 #bar button.on { background: var(--accent); border-color: var(--accent); color: var(--bg); }
 #bar button.on:hover { color: var(--bg); }
 #bookmark { filter: grayscale(1); opacity: .55; }
