@@ -648,8 +648,22 @@ async function main() {
   // ─── 조작 ───
   $("#next").addEventListener("click", () => goto(App.page + 1));
   $("#prev").addEventListener("click", () => goto(App.page - 1));
-  $(".tap.right").addEventListener("click", () => goto(App.page + 1));
-  $(".tap.left").addEventListener("click", () => goto(App.page - 1));
+
+  // 좌우 가장자리를 톡 누르면 페이지를 넘긴다. 단, 글자를 드래그해 선택했으면
+  // 넘기지 않는다 — 그건 복사하려는 것이지 페이지를 넘기려는 게 아니다.
+  // (예전엔 넘김 영역이 글자를 덮어서 가장자리 글자를 선택할 수 없었다.)
+  $("#viewport").addEventListener("click", (e) => {
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed && sel.toString().trim()) return;  // 선택 중 → 넘기지 않음
+    // 인용·링크·하이라이트를 눌렀으면 그쪽이 처리한다
+    if (e.target.closest("a, button, .cite, mark, #popup, #ref-popup")) return;
+    const rect = $("#viewport").getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const edge = rect.width * 0.12;
+    if (x < edge) goto(App.page - 1);
+    else if (x > rect.width - edge) goto(App.page + 1);
+  });
+
   $("#toc-toggle").addEventListener("click", () => $("#toc").classList.toggle("open"));
   $("#bookmark").addEventListener("click", toggleBookmark);
 

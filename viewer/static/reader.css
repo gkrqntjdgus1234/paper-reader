@@ -443,17 +443,19 @@ figcaption, .table-caption {
   color: var(--fg);
 }
 
-/* 페이지 넘김용 좌우 클릭 영역 */
+/* 페이지 넘김용 좌우 영역 — 호버 힌트만 담당한다.
+ * pointer-events:none 이라 그 아래 글자를 가리지 않는다. 예전엔 이 div 가 글자를
+ * 덮어서 가장자리 글자를 드래그 선택할 수 없었다. 실제 페이지 넘김은 reader.js 가
+ * 뷰포트 클릭에서 처리하되, 글자를 선택 중이면 넘기지 않는다. */
 .tap {
   position: absolute;
   top: 0; bottom: 46px;
   width: 12%;
-  cursor: pointer;
-  z-index: 5;
+  z-index: 1;
+  pointer-events: none;
 }
 .tap.left { left: 0; }
 .tap.right { right: 0; }
-.tap:hover { background: rgba(139, 111, 71, .05); }
 
 #loading {
   position: fixed;
