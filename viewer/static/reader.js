@@ -608,10 +608,14 @@ async function main() {
   $("#lang").disabled = !hasTranslation;
   $("#lang").title = hasTranslation ? "원문 ↔ 번역" : "이 논문은 번역되지 않았다";
 
-  // 책장에서 검색 결과를 눌러 들어온 경우: ?goto=b0012&lang=translated
+  // 번역이 있으면 번역본으로 연다. 번역하려고 넣은 논문인데 영어로 열리면
+  // "번역이 안 됐다"고 오해하기 쉽다 (실제로 그런 문의가 있었다). 원문은 t 로.
+  if (hasTranslation) App.lang = "translated";
+
+  // 책장에서 검색 결과를 눌러 들어온 경우: ?goto=b0012&lang=original|translated
   const params = new URLSearchParams(location.search);
   const jumpTo = params.get("goto");
-  if (params.get("lang") === "translated" && hasTranslation) App.lang = "translated";
+  if (params.get("lang") === "original") App.lang = "original";
 
   const book = $("#book");
   for (const block of App.paper.blocks) book.appendChild(renderBlock(block));
